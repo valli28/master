@@ -1,6 +1,25 @@
 import cv2 as cv2
 import numpy as np
 
+d65_whitepoint =  (0.3127, 0.3290, 0.3583)
+
+f = 3446.79393
+k1 = 0.115801
+k2 = -0.253555
+k3 = 0.33047
+p1 = -0.0522358
+p2 = -0.00423041
+
+distortion_coefficients = (k1, k2, p1, p2, k3)
+
+fx = f
+fy = -f
+cx = -884.651
+cy = -68.3818
+
+camera_parameters = np.array([[fx, 0, cx],
+                              [0, fy, cy],
+                              [0, 0, 1]])
 
 def find_3_channel_stats(img):
     # 3-channel descriptive statistics (mean and variance): 
@@ -19,7 +38,11 @@ def mahal_dist(img, ref_img, BGR_stats):     # 4. (Mahalanobis)Distance in RGB s
     redVals = np.reshape(ref_img[:,:,2], -1)
     x = np.array([blueVals, greenVals, redVals]) # nx3 array of all channels
     cov_matrix = np.cov(x)
-    ref_color = np.array([round(BGR_stats[0][0]), round(BGR_stats[1][0]), round(BGR_stats[2][0])])
+
+    # white point instead of reference image
+    ref_color = np.array([BGR_stats[0][0], BGR_stats[1][0], BGR_stats[2][0]])
+    #ref_color = np.array([d65_whitepoint[0], d65_whitepoint[1], d65_whitepoint[2]]) # Try printing the original
+
 
     reshaped_img = np.array([np.reshape(img[:,:,0], -1), np.reshape(img[:,:,1], -1), np.reshape(img[:,:,2], -1)])
 
@@ -44,20 +67,26 @@ def mahal_dist(img, ref_img, BGR_stats):     # 4. (Mahalanobis)Distance in RGB s
 def FrameCapture(path): 
       
     # Path to video file 
-    vidObj = cv2.VideoCapture(path) 
-    
+    vidObj = cv2.VideoCapture(path)
     # Read reference image
     ref_img = cv2.imread("ref_img.png")
     #ref_img = cv2.cvtColor(ref_img, cv2.COLOR_XYZ2RGB)
+    kernel = np.ones((3,3),np.uint8)
   
     # checks whether frames were extracted 
     ret = 1
   
     while ret: 
   
+        # "Huske" ting som bliver ved med at have en høj varmestråling i billedet, sådan så at reflektioner og midten af billedet (som altid er mere exposed appearently) bliver subtraheret.
+        # Derefter estimere punkternes poisioner og samle dem i "blobs". 
+        # Disse blobs har så koordinater som kan projekteres på en 3D model bagefter.
+        
+        
         # vidObj object calls read 
         # function extract frames 
         ret, img = vidObj.read() 
+        #img = cv2.undistort(img, camera_parameters, distortion_coefficients)
         
         #Resize the image for easier calculation and prototyping
         img = cv2.resize(img,(960,540))
@@ -68,14 +97,18 @@ def FrameCapture(path):
 
         stats = find_3_channel_stats(ref_img)
         mahal_img = mahal_dist(img, ref_img, stats)
+
+        #Do some closing
+        
+        mahal_img = cv2.morphologyEx(mahal_img, cv2.MORPH_CLOSE, kernel)
         cv2.imshow("Segmented image", mahal_img)
 
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        if cv2.waitKey(1) == 27:
             break
 
         
     # When everything done, release the capture
-    cap.release()
+    cv2.cap.release()
     cv2.destroyAllWindows()
   
 # Driver Code 
