@@ -78,9 +78,10 @@ def FrameCapture(path):
   
     while ret: 
   
-        # "Huske" ting som bliver ved med at have en høj varmestråling i billedet, sådan så at reflektioner og midten af billedet (som altid er mere exposed appearently) bliver subtraheret.
+        # "Huske" ting som bliver ved med at have en hoej varmestraaling i billedet, saadan saa at reflektioner og midten af billedet (som altid er mere exposed appearently) bliver subtraheret.
         # Derefter estimere punkternes poisioner og samle dem i "blobs". 
-        # Disse blobs har så koordinater som kan projekteres på en 3D model bagefter.
+        # Disse blobs har saa koordinater som kan projekteres paa en 3D model bagefter.
+        # The halo-effect is appearently called a vignetting effect, and is often prominent in RGB images with bad lenses. 
         
         
         # vidObj object calls read 
