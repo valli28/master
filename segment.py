@@ -90,6 +90,7 @@ def FrameCapture(path):
         #img = cv2.undistort(img, camera_parameters, distortion_coefficients)
         
         #Resize the image for easier calculation and prototyping
+        cv2.imshow("Original", img)
         img = cv2.resize(img,(960,540))
         
         cv2.imshow("Original", img)
@@ -116,4 +117,4 @@ def FrameCapture(path):
 if __name__ == '__main__': 
   
     # Calling the function 
-    FrameCapture("iron.mp4") 
+    FrameCapture("flir/first.tiff") 
