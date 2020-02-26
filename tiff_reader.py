@@ -1,5 +1,8 @@
-import cv2
+#! /usr/bin/python3
+
+
 import numpy as np
+import cv2
 import tiffcapture as tc
 import matplotlib.pyplot as plt
 
@@ -32,6 +35,7 @@ y1 = 30
 y2 = 90
 x1 = 40
 x2 = 120
+
 
 ret, img = tiff.read()  
 for seq in range(n_RGB_frames):
