@@ -1,6 +1,6 @@
 from pysolar.solar import *
 import datetime
-import numpy as numpy
+import numpy as np
 import utm
 from mpl_toolkits.mplot3d import axes3d
 import matplotlib.pyplot as plt
@@ -37,10 +37,22 @@ north_wall = Boundary(local2[0], local2[1], 0.0, local3[0], local3[1], 0.0, loca
 west_wall = Boundary(local3[0], local3[1], 0.0, local4[0], local4[1], 0.0, local3[0], local3[1], height)
 south_wall = Boundary(local4[0], local4[1], 0.0, local1[0], local1[1], 0.0, local4[0], local4[1], height)
 
+
+
 fig = plt.figure(num=1, clear=True)
 ax = fig.add_subplot(1, 1, 1, projection='3d')
 
+
 east_wall.plot(ax)
+north_wall.plot(ax)
+west_wall.plot(ax)
+south_wall.plot(ax)
 
-ax.set(xlabel='x', ylabel='y', zlabel='z')
+ax.set_xlabel('X')
+ax.set_xlim(-10, 10)
+ax.set_ylabel('Y')
+ax.set_ylim(-10, 10)
+ax.set_zlabel('Z')
+ax.set_zlim(-10, 10)
 
+plt.show()
