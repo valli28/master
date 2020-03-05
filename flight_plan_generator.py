@@ -41,9 +41,13 @@ class Structure():
 fig = plt.figure()
 ax = Axes3D(fig)
 x = [0,1,1,0]
-y = [0,0,0,0]
+y = [0,0,0,0]   
 z = [0,0,1,1]
 wall1 = [list(zip(x,y,z))]
+
+
+flight_plan = []
+
 
 
 ax.add_collection3d(Poly3DCollection(wall1))
