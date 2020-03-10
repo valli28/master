@@ -1,9 +1,16 @@
-from mpl_toolkits.mplot3d import axes3d
+from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
 from matplotlib import cm
 from pylab import meshgrid,linspace,zeros,dot,norm,cross,vstack,array,matrix,sqrt
+import numpy as np
 
 
+
+def draw_vector(o, u, axes):
+    ''' o is the origin of the vector while u is the direction '''
+    soa = np.array([o[0], o[1], o[2], u[0], u[1], u[2]])
+    X, Y, Z, U, V, W = zip(soa)
+    axes.quiver(X, Y, Z, U, V, W) # Add color
 
 def rotmatrix(axis,costheta):
     """ Calculate rotation matrix
@@ -12,15 +19,16 @@ def rotmatrix(axis,costheta):
     - `axis`     : Rotation axis
     - `costheta` : Rotation angle
     """
-    x,y,z = axis
-    c = costheta
+    x,y,z = axis # Actually not the normal of the plane, but an axis parallel to the plane
+    c = costheta # and this angle rotates around that parallel.
     s = sqrt(1-c*c)
     C = 1-c
+
     return  matrix([[ x*x*C+c,    x*y*C-z*s,  x*z*C+y*s ],
                     [ y*x*C+z*s,  y*y*C+c,    y*z*C-x*s ],
                     [ z*x*C-y*s,  z*y*C+x*s,  z*z*C+c   ]])
 
-def plane(Lx,Ly,Nx,Ny,n,d):
+def plane(Lx,Ly,Nx,Ny,n,d, axes):
     """ Calculate points of a generic plane 
 
     Arguments:
@@ -37,12 +45,17 @@ def plane(Lx,Ly,Nx,Ny,n,d):
     # Create the mesh grid, of a XY plane sitting on the orgin
     X,Y = meshgrid(x,y)
     Z   = zeros([Nx,Ny])
-    n0 = array([1,1,1])
+    n0 = array([0,0,1])
+    n0 = n0 / np.linalg.norm(n0)
 
     # Rotate plane to the given normal vector
     if any(n0!=n):
         costheta = dot(n0,n)/(norm(n0)*norm(n))
         axis     = cross(n0,n)/norm(cross(n0,n))
+
+        draw_vector(array([0, 0, 0]), n0, axes)
+        draw_vector(array([0, 0, 0]), axis, axes)
+
         rotMatrix = rotmatrix(axis,costheta)
         XYZ = vstack([X.flatten(),Y.flatten(),Z.flatten()])
         X,Y,Z = array(rotMatrix*XYZ).reshape(3,Nx,Ny)
@@ -66,20 +79,21 @@ if __name__ == "__main__":
     distList = linspace(-10,10,Nplanes)
 
     # Plane orientation - normal vector
-    normalVector = array([0,1,1]) # Y direction
+    normalVector = array([1, 1, 0]) # Y direction
+    normalVector = normalVector/np.linalg.norm(normalVector)
 
     # Create figure
     fig = plt.figure()
     ax = fig.gca(projection='3d')
 
-    # Plotting
-    for i,ypos in enumerate(linspace(-10,10,10)):
 
-        # Calculate plane
-        X,Y,Z = plane(20,20,100,100,normalVector,distList[i])
+    # Calculate plane
+    X,Y,Z = plane(20,20,100,100,normalVector,0, ax)
 
-        ax.plot_surface(X, Y, Z, rstride=5, cstride=5,
-                        alpha=0.8, color=colorList[i])
+    ax.plot_surface(X, Y, Z, rstride=5, cstride=5,
+                    alpha=0.8, color=colorList[0])
+
+    draw_vector(array([0, 0, 0]), normalVector, ax)
 
     # Set plot display parameters    
     ax.set_xlabel('X')
