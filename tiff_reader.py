@@ -1,5 +1,8 @@
-import cv2
+#! /usr/bin/python3
+
+
 import numpy as np
+import cv2
 import tiffcapture as tc
 import matplotlib.pyplot as plt
 
