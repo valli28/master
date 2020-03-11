@@ -7,7 +7,7 @@ from pylab import meshgrid,linspace,zeros,dot,norm,cross,vstack,array,matrix,sqr
 
 # Define boundary as 3 points to create a plane. The points create two vectors, p01 and p02 that span the plane. 
 class Boundary():
-    def __init__(self, x0, y0, z0, x1, y1, z1, x2, y2, z2): # Add more points. This is supposed to be a polygon. 
+    def __init__(self, x0, y0, z0, x1, y1, z1, x2, y2, z2, material, sun): # Add more points. This is supposed to be a polygon. 
 
         ## Geometric parameters #########################################
         # Points
@@ -15,9 +15,9 @@ class Boundary():
         self.p1 = np.array([x1, y1, z1])
         self.p2 = np.array([x2, y2, z2])
 
-        self.x = np.array([x0, x1, x2])
-        self.y = np.array([y0, y1, y2])
-        self.z = np.array([z0, z1, z2])
+        self.x = np.array([])
+        self.y = np.array([])
+        self.z = np.array([])
 
         # Vectors
         self.p01 = self.p1 - self.p0
@@ -49,8 +49,21 @@ class Boundary():
         '''
  
         ## Material parameters #########################################
+        self.material = material
         self.reflectiveness = 1.0 # Default reflectiveness is 100% (mirror)
 
+        if material == "wall":
+            self.color = 'r'
+            self.alpha = 0.95
+        elif material == "window":
+            self.color = 'b'
+            self.alpha = 0.4
+        elif material == "grass":
+            self.color = "g"
+            self.alpha = 1.0
+
+        self.lightsource = sun
+            
 
     def plane_matrices(self, Nx, Ny, Nz):
         """ Calculate points of a generic plane 
@@ -59,37 +72,24 @@ class Boundary():
         - `Ny` : Number of points, second direction
         - `Nz` : Number of points, third direction
 
-        >>> x = np.arange(-5, 5, 0.1)
-        >>> y = np.arange(-5, 5, 0.1)
-        >>> xx, yy = np.meshgrid(x, y, sparse=True)
-        >>> z = np.sin(xx**2 + yy**2) / (xx**2 + yy**2)
         """
-
         # Based on the points and vectors, we draw planes that make sense. The matrices are not solved based on eachother or some plane formula due to divide-by-zero 
 
-        x = np.linspace(self.p0[0], self.p1[0], Nx)
-        y = np.linspace(self.p0[1], self.p1[1], Ny)
-        z = np.linspace(self.p0[2], self.p2[2], Nz)
+        self.x = np.linspace(self.p0[0], self.p1[0], Nx)
+        self.y = np.linspace(self.p0[1], self.p1[1], Ny)
+        self.z = np.linspace(self.p0[2], self.p2[2], Nz)
 
+        # TODO: Make sure this also works with planes that are not vertical (which they currently all are...) like roofs etc.
+        xx, zz = np.meshgrid(self.x, self.z)
+        yy, zz = np.meshgrid(self.y, self.z)
 
-        print("xyz's")
-        print(x)
-        print(y)
-        print(z)
-        
-        xx, yy = np.meshgrid(x, y)
-        zz,  = np.meshgrid(z)
-
-        print("xxyyzz's")
-        print(xx)
-        print(yy)
-        print(zz)
-        
-    
         return xx, yy, zz
 
 
     def plot(self, axes):
-        axes.plot_surface(self.X, self.Y, self.Z, rstride=5, cstride=5, alpha=0.8)
-        axes.plot(*zip(self.p0, self.p1, self.p2), color='r', linestyle=' ', marker='o')
+        
+        axes.plot_surface(self.X, self.Y, self.Z, alpha=self.alpha, color = self.color)
+        
+        #Plot bounding points.
+        #axes.plot(*zip(self.p0, self.p1, self.p2), color='r', linestyle=' ', marker='o')
 

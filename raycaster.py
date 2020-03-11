@@ -9,8 +9,8 @@ import matplotlib.pyplot as plt
 #Import custom classes
 from sun import Sun
 from boundary import Boundary
-#s = Sun()
-#print("Distance between earth and sun is currently = " + str(s.distance_earth_sun))
+
+
 
 coord1 = [10.32522211465866,55.47169437449494]
 coord2 = [10.32524982538288,55.47166787993427]
@@ -26,17 +26,22 @@ lat = 55.471689
 lon = 10.325267
 utm_center = utm.from_latlon(lat, lon)
 
+s = Sun(lat, lon)
+
 local1 = [utm_center[0] - utm1[0], utm_center[1] - utm1[1]]
 local2 = [utm_center[0] - utm2[0], utm_center[1] - utm2[1]]
 local3 = [utm_center[0] - utm3[0], utm_center[1] - utm3[1]]
 local4 = [utm_center[0] - utm4[0], utm_center[1] - utm4[1]]
 
 height = 2.0
-east_wall = Boundary(local1[0], local1[1], 0.0, local2[0], local2[1], 0.0, local1[0], local1[1], height)
-north_wall = Boundary(local2[0], local2[1], 0.0, local3[0], local3[1], 0.0, local2[0], local2[1], height)
-west_wall = Boundary(local3[0], local3[1], 0.0, local4[0], local4[1], 0.0, local3[0], local3[1], height)
-south_wall = Boundary(local4[0], local4[1], 0.0, local1[0], local1[1], 0.0, local4[0], local4[1], height)
+east_wall = Boundary(local1[0], local1[1], 0.0, local2[0], local2[1], 0.0, local1[0], local1[1], height, "wall", s.get_lightsource())
+fake_east_window = Boundary(0.3857, -2.1862, 0.5, 1.3943, -1.532, 0.8, 0.3857, -2.1862, 0.5+0.6, "window", s.get_lightsource())
+north_wall = Boundary(local2[0], local2[1], 0.0, local3[0], local3[1], 0.0, local2[0], local2[1], height, "wall", s.get_lightsource())
+north_door_window = Boundary(2.292, 0.424, 0.8, 1.699, 1.342, 0.8, 2.292, 0.424, 0.8+0.5, "window", s.get_lightsource())
+west_wall = Boundary(local3[0], local3[1], 0.0, local4[0], local4[1], 0.0, local3[0], local3[1], height, "wall", s.get_lightsource())
+south_wall = Boundary(local4[0], local4[1], 0.0, local1[0], local1[1], 0.0, local4[0], local4[1], height, "wall", s.get_lightsource())
 
+list_of_reflective_boundaries = [fake_east_window, north_door_window]
 
 
 fig = plt.figure(num=1, clear=True)
@@ -44,15 +49,21 @@ ax = fig.add_subplot(1, 1, 1, projection='3d')
 
 
 east_wall.plot(ax)
+fake_east_window.plot(ax)
 north_wall.plot(ax)
+north_door_window.plot(ax)
 west_wall.plot(ax)
 south_wall.plot(ax)
 
-ax.set_xlabel('X')
+s.cast_on(list_of_reflective_boundaries, ax)
+
+
+
+ax.set_xlabel('X: North')
 ax.set_xlim(-10, 10)
-ax.set_ylabel('Y')
+ax.set_ylabel('Y: East')
 ax.set_ylim(-10, 10)
-ax.set_zlabel('Z')
+ax.set_zlabel('Z: Up')
 ax.set_zlim(-10, 10)
 
 plt.show()
