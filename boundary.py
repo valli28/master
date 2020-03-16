@@ -75,11 +75,22 @@ class Boundary():
         """
         # Based on the points and vectors, we draw planes that make sense. The matrices are not solved based on eachother or some plane formula due to divide-by-zero 
 
-        self.x = np.linspace(self.p0[0], self.p1[0], Nx)
-        self.y = np.linspace(self.p0[1], self.p1[1], Ny)
-        self.z = np.linspace(self.p0[2], self.p2[2], Nz)
 
         # TODO: Make sure this also works with planes that are not vertical (which they currently all are...) like roofs etc.
+
+
+        if self.p02[0] == 0: # If planes are vertical:
+            self.x = np.linspace(self.p0[0], self.p1[0], Nx)
+            self.y = np.linspace(self.p0[1], self.p1[1], Ny)
+            self.z = np.linspace(self.p0[2], self.p2[2], Nz)
+
+        # Does not work: 
+        if self.p02[2] == 0: # If planes are horizontal (not varying in z i guess...)
+            self.x = np.linspace(self.p0[0], self.p1[0], Nx)
+            self.y = np.linspace(self.p0[1], self.p2[1], Ny)
+            self.z = np.linspace(self.p0[2], self.p2[2], Nz)
+
+        
         xx, zz = np.meshgrid(self.x, self.z)
         yy, zz = np.meshgrid(self.y, self.z)
 
@@ -87,8 +98,14 @@ class Boundary():
 
 
     def plot(self, axes):
-        
+
+        #if self.color == "g":
+        #print(self.X)
+        #print(self.Y)
+        #print(self.Z)
+
         axes.plot_surface(self.X, self.Y, self.Z, alpha=self.alpha, color = self.color)
+
         
         #Plot bounding points.
         #axes.plot(*zip(self.p0, self.p1, self.p2), color='r', linestyle=' ', marker='o')

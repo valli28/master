@@ -13,15 +13,15 @@ import math
 
 class Sun():
     def __init__(self, lat, lon):
-        self.date_now = datetime.datetime.now(tz=pytz.UTC) # Instead of now, do a slider with +- 12 hours from now
-        self.distance_earth_sun = self.calculate_sun_earth_distance(self.date_now)
+        self.date = datetime.datetime.now(tz=pytz.timezone("Europe/Copenhagen")) # Instead of now, do a slider with +- 12 hours from now
+        self.distance_earth_sun = self.calculate_sun_earth_distance(self.date)
 
         # latitude and longditude of HCA Airport test-site shed/hut
         self.lat = lat
         self.lon = lon
 
-        self.altitude = get_altitude(self.lat, self.lon, self.date_now, 13.0)
-        self.azimuth = get_azimuth(self.lat, self.lon, self.date_now, 13.0)
+        self.altitude = get_altitude(self.lat, self.lon, self.date, elevation=13.0)
+        self.azimuth = get_azimuth(self.lat, self.lon, self.date, elevation=13.0)
 
 
     def calculate_sun_earth_distance(self, when):
@@ -41,6 +41,9 @@ class Sun():
     def cast_on(self, surfaces, axes):
         # We know the position of the sun in degrees from north (0 to 360) and degrees of altitude (from -90 to 90 I think)
 
+        # The cast_on method gets called every time we update the time we wish to plot things for, so we update the azimuth and altitude.
+        self.altitude = get_altitude(self.lat, self.lon, self.date, elevation=13.0)
+        self.azimuth = get_azimuth(self.lat, self.lon, self.date, elevation=13.0)
 
         # TODO: check for surfaces before it hits the window
 
@@ -62,7 +65,7 @@ class Sun():
 
             for j in range(len(xyz_end)):
                 x, y, z = xyz_end[j][0] + r*math.sin(theta)*math.cos(phi), xyz_end[j][1] + r*math.sin(theta)*math.sin(phi), xyz_end[j][2] + r*math.cos(phi)
-                print(x, y, z)
+                #print(x, y, z)
                 soa.append([x, y, z, xyz_end[j][0] - x, xyz_end[j][1] - y, xyz_end[j][2] - z])
 
 

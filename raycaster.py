@@ -4,6 +4,7 @@ import numpy as np
 import utm
 from mpl_toolkits.mplot3d import axes3d
 import matplotlib.pyplot as plt
+from matplotlib.widgets import Slider, Button, RadioButtons
 
 
 #Import custom classes
@@ -35,13 +36,15 @@ local4 = [utm_center[0] - utm4[0], utm_center[1] - utm4[1]]
 
 height = 2.0
 east_wall = Boundary(local1[0], local1[1], 0.0, local2[0], local2[1], 0.0, local1[0], local1[1], height, "wall", s.get_lightsource())
-fake_east_window = Boundary(0.3857, -2.1862, 0.5, 1.3943, -1.532, 0.8, 0.3857, -2.1862, 0.5+0.6, "window", s.get_lightsource())
+south_window = Boundary(0.3857, -2.1862, 0.5, 1.3943, -1.532, 0.8, 0.3857, -2.1862, 0.5+0.6, "window", s.get_lightsource())
 north_wall = Boundary(local2[0], local2[1], 0.0, local3[0], local3[1], 0.0, local2[0], local2[1], height, "wall", s.get_lightsource())
-north_door_window = Boundary(2.292, 0.424, 0.8, 1.699, 1.342, 0.8, 2.292, 0.424, 0.8+0.5, "window", s.get_lightsource())
+fake_east_window = Boundary(2.292, 0.424, 0.8, 1.699, 1.342, 0.8, 2.292, 0.424, 0.8+0.5, "window", s.get_lightsource())
 west_wall = Boundary(local3[0], local3[1], 0.0, local4[0], local4[1], 0.0, local3[0], local3[1], height, "wall", s.get_lightsource())
 south_wall = Boundary(local4[0], local4[1], 0.0, local1[0], local1[1], 0.0, local4[0], local4[1], height, "wall", s.get_lightsource())
 
-list_of_reflective_boundaries = [fake_east_window, north_door_window]
+#ground_plane = Boundary(-5, -5, 0, 5, -5, 0, -5, 5, 0, "grass", s.get_lightsource())
+
+list_of_reflective_boundaries = [fake_east_window, south_window]
 
 
 fig = plt.figure(num=1, clear=True)
@@ -49,21 +52,31 @@ ax = fig.add_subplot(1, 1, 1, projection='3d')
 
 
 east_wall.plot(ax)
-fake_east_window.plot(ax)
+south_window.plot(ax)
 north_wall.plot(ax)
-north_door_window.plot(ax)
+fake_east_window.plot(ax)
 west_wall.plot(ax)
 south_wall.plot(ax)
+
+#ground_plane.plot(ax)
 
 s.cast_on(list_of_reflective_boundaries, ax)
 
 
-
-ax.set_xlabel('X: North')
+ax.set_xlabel('X: East')
 ax.set_xlim(-10, 10)
-ax.set_ylabel('Y: East')
+ax.set_ylabel('Y: North')
 ax.set_ylim(-10, 10)
 ax.set_zlabel('Z: Up')
 ax.set_zlim(-10, 10)
+
+
+slider_box = plt.axes([0.15, 0.05, 0.65, 0.03], facecolor='lightgoldenrodyellow')
+time_slider = Slider(slider_box, 'Amp', valmin=s.date.timestamp() - 60.0*60.0*12.0, valmax=s.date.timestamp() + 12.0*60.0*60.0, valinit=s.date.timestamp())
+def update(val):
+    s.date = datetime.datetime.fromtimestamp(time_slider.val, tz=pytz.timezone("Europe/Copenhagen"))
+    s.cast_on(list_of_reflective_boundaries, ax)
+    fig.canvas.draw_idle()
+time_slider.on_changed(update)
 
 plt.show()
