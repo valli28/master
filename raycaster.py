@@ -10,6 +10,7 @@ from matplotlib.widgets import Slider, Button, RadioButtons
 #Import custom classes
 from sun import Sun
 from boundary import Boundary
+from mission import Mission
 
 
 
@@ -28,6 +29,7 @@ lon = 10.325267
 utm_center = utm.from_latlon(lat, lon)
 
 s = Sun(lat, lon)
+m = Mission(80, 80)
 
 local1 = [utm_center[0] - utm1[0], utm_center[1] - utm1[1]]
 local2 = [utm_center[0] - utm2[0], utm_center[1] - utm2[1]]
@@ -45,6 +47,7 @@ south_wall = Boundary(local4[0], local4[1], 0.0, local1[0], local1[1], 0.0, loca
 #ground_plane = Boundary(-5, -5, 0, 5, -5, 0, -5, 5, 0, "grass", s.get_lightsource())
 
 list_of_reflective_boundaries = [fake_east_window, south_window]
+list_of_walls = [east_wall, north_wall, west_wall, south_wall]
 
 
 fig = plt.figure(num=1, clear=True)
@@ -61,6 +64,7 @@ south_wall.plot(ax)
 #ground_plane.plot(ax)
 
 s.cast_on(list_of_reflective_boundaries, ax)
+m.draw_mission_planes(list_of_walls, ax)
 
 
 ax.set_xlabel('X: East')
@@ -72,7 +76,7 @@ ax.set_zlim(-10, 10)
 
 
 slider_box = plt.axes([0.15, 0.05, 0.65, 0.03], facecolor='lightgoldenrodyellow')
-time_slider = Slider(slider_box, 'Amp', valmin=s.date.timestamp() - 60.0*60.0*12.0, valmax=s.date.timestamp() + 12.0*60.0*60.0, valinit=s.date.timestamp())
+time_slider = Slider(slider_box, 'UNIX Time', valmin=s.date.timestamp() - 60.0*60.0*12.0, valmax=s.date.timestamp() + 12.0*60.0*60.0, valinit=s.date.timestamp())
 def update(val):
     s.date = datetime.datetime.fromtimestamp(time_slider.val, tz=pytz.timezone("Europe/Copenhagen"))
     s.cast_on(list_of_reflective_boundaries, ax)

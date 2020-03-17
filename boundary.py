@@ -54,10 +54,10 @@ class Boundary():
 
         if material == "wall":
             self.color = 'r'
-            self.alpha = 0.95
+            self.alpha = 0.3
         elif material == "window":
             self.color = 'b'
-            self.alpha = 0.4
+            self.alpha = 0.6
         elif material == "grass":
             self.color = "g"
             self.alpha = 1.0
@@ -77,7 +77,6 @@ class Boundary():
 
 
         # TODO: Make sure this also works with planes that are not vertical (which they currently all are...) like roofs etc.
-
 
         if self.p02[0] == 0: # If planes are vertical:
             self.x = np.linspace(self.p0[0], self.p1[0], Nx)
@@ -106,7 +105,6 @@ class Boundary():
 
         axes.plot_surface(self.X, self.Y, self.Z, alpha=self.alpha, color = self.color)
 
-        
         #Plot bounding points.
         #axes.plot(*zip(self.p0, self.p1, self.p2), color='r', linestyle=' ', marker='o')
 
