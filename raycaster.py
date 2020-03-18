@@ -5,6 +5,7 @@ import utm
 from mpl_toolkits.mplot3d import axes3d
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider, Button, RadioButtons
+from matplotlib import cm
 
 
 #Import custom classes
@@ -42,11 +43,12 @@ south_window = Boundary(0.3857, -2.1862, 0.5, 1.3943, -1.532, 0.8, 0.3857, -2.18
 north_wall = Boundary(local2[0], local2[1], 0.0, local3[0], local3[1], 0.0, local2[0], local2[1], height, "wall", s.get_lightsource())
 fake_east_window = Boundary(2.292, 0.424, 0.8, 1.699, 1.342, 0.8, 2.292, 0.424, 0.8+0.5, "window", s.get_lightsource())
 west_wall = Boundary(local3[0], local3[1], 0.0, local4[0], local4[1], 0.0, local3[0], local3[1], height, "wall", s.get_lightsource())
+fake_west_window = Boundary(-2.4586, -1.0349, 0.8, -1.9872, -2.0232, 0.8, -2.4586, -1.0349, 0.8+0.5, "window", s.get_lightsource)
 south_wall = Boundary(local4[0], local4[1], 0.0, local1[0], local1[1], 0.0, local4[0], local4[1], height, "wall", s.get_lightsource())
 
 #ground_plane = Boundary(-5, -5, 0, 5, -5, 0, -5, 5, 0, "grass", s.get_lightsource())
 
-list_of_reflective_boundaries = [fake_east_window, south_window]
+list_of_reflective_boundaries = [fake_east_window, south_window, fake_west_window]
 list_of_walls = [east_wall, north_wall, west_wall, south_wall]
 
 
@@ -59,6 +61,7 @@ south_window.plot(ax)
 north_wall.plot(ax)
 fake_east_window.plot(ax)
 west_wall.plot(ax)
+fake_west_window.plot(ax)
 south_wall.plot(ax)
 
 #ground_plane.plot(ax)
@@ -81,6 +84,8 @@ def update(val):
     s.date = datetime.datetime.fromtimestamp(time_slider.val, tz=pytz.timezone("Europe/Copenhagen"))
     s.cast_on(list_of_reflective_boundaries, ax)
     fig.canvas.draw_idle()
+    m.check_for_reflection(s, ax)
 time_slider.on_changed(update)
+
 
 plt.show()

@@ -3,6 +3,7 @@ from mpl_toolkits.mplot3d import axes3d
 import matplotlib.pyplot as plt
 from matplotlib import cm
 from pylab import meshgrid,linspace,zeros,dot,norm,cross,vstack,array,matrix,sqrt
+from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 
 
 # Define boundary as 3 points to create a plane. The points create two vectors, p01 and p02 that span the plane. 
@@ -102,6 +103,10 @@ class Boundary():
         #print(self.X)
         #print(self.Y)
         #print(self.Z)
+        
+        #color = self.color
+
+       
 
         axes.plot_surface(self.X, self.Y, self.Z, alpha=self.alpha, color = self.color)
 

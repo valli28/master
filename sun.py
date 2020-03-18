@@ -24,6 +24,9 @@ class Sun():
         self.azimuth = get_azimuth(self.lat, self.lon, self.date, elevation=13.0)
 
         self.vectors = []
+        self.r_vectors = []
+
+        self.roa = []
 
 
     def calculate_sun_earth_distance(self, when):
@@ -53,7 +56,7 @@ class Sun():
         xyz_end = []
         end_index = len(surfaces[0].x) - 1
         soa = [] # Sun-vectors
-        roa = [] # Reflection vectors
+        self.roa = [] # Reflection vectors
         for i in range(len(surfaces)): 
             # First we define the end-points of the vectors"
             xyz_end.append([surfaces[i].x[0], surfaces[i].y[0], surfaces[i].z[0]])
@@ -75,8 +78,7 @@ class Sun():
                 # We check the entrance angle to the plane.
                 incidence_angle = np.arccos(np.clip(np.dot([u, v, w], surfaces[i].normal), -1.0, 1.0))
                 specular_vector = 2*np.dot(surfaces[i].normal, [u, v, w])* surfaces[i].normal - [u, v, w]
-                print(specular_vector)
-                
+                                
 
                 # We check whether the sunray goes through a wall first by cheating a little bit. 
                 # The way we do it is by finding whether the normal of the plane is pointing in the opposite direction of the sun.
@@ -85,19 +87,20 @@ class Sun():
                 ground_product = np.dot([0, 0, 1], [u, v, w])
                 if (dot_product > 0 and ground_product < 0):
                     soa.append([x, y, z, u, v, w])
-                    roa.append([xyz_end[j][0], xyz_end[j][1], xyz_end[j][2], -specular_vector[0], -specular_vector[1], -specular_vector[2]])
+                    self.roa.append([xyz_end[j][0], xyz_end[j][1], xyz_end[j][2], -specular_vector[0], -specular_vector[1], -specular_vector[2]])
                 else: 
                     soa.append([0, 0, 0, 0, 0, 0])
-                    roa.append([0, 0, 0, 0, 0, 0])
+                    self.roa.append([0, 0, 0, 0, 0, 0])
 
                 
-        Xr, Yr, Zr, Ur, Vr, Wr = zip(*roa)
+        Xr, Yr, Zr, Ur, Vr, Wr = zip(*self.roa)
         X, Y, Z, U, V, W = zip(*soa)
 
         if self.vectors != []:
             self.vectors.remove()
-        self.vectors = axes.quiver(X, Y, Z, U, V, W)
-        axes.quiver(Xr, Yr, Zr, Ur, Vr, Wr)
+            #self.r_vectors.remove()
+        self.vectors = axes.quiver(X, Y, Z, U, V, W, color='r')
+        self.r_vectors = axes.quiver(Xr, Yr, Zr, Ur, Vr, Wr)
 
 
 
