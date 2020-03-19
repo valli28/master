@@ -31,7 +31,7 @@ class Boundary():
         #self.X, self.Y, self.Z = self.plane(np.linalg.norm(self.p01), np.linalg.norm(self.p02), 20, 20, self.normal, self.z[2])
 
 
-        Nx = Ny = Nz = 10
+        Nx = Ny = Nz = 30
         self.X, self.Y, self.Z = self.plane_matrices(Nx, Ny, Nz)
 
         '''

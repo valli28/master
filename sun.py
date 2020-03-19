@@ -14,6 +14,8 @@ import math
 class Sun():
     def __init__(self, lat, lon):
         self.date = datetime.datetime.now(tz=pytz.timezone("Europe/Copenhagen")) # Instead of now, do a slider with +- 12 hours from now
+        self.date = datetime.datetime(2020, 1, 15, 9, 0, 0, 0, tzinfo=pytz.timezone("Europe/Copenhagen"))
+
         self.distance_earth_sun = self.calculate_sun_earth_distance(self.date)
 
         # latitude and longditude of HCA Airport test-site shed/hut
@@ -98,7 +100,7 @@ class Sun():
 
         if self.vectors != []:
             self.vectors.remove()
-            #self.r_vectors.remove()
+            self.r_vectors.remove()
         self.vectors = axes.quiver(X, Y, Z, U, V, W, color='r')
         self.r_vectors = axes.quiver(Xr, Yr, Zr, Ur, Vr, Wr)
 
