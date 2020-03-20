@@ -78,6 +78,10 @@ ax.set_zlabel('Z: Up')
 ax.set_zlim(-10, 10)
 
 
+axnext = plt.axes([0.85, 0.25, 0.10, 0.075])
+bnext = Button(axnext, 'Path')
+
+
 slider_box = plt.axes([0.15, 0.05, 0.65, 0.03], facecolor='lightgoldenrodyellow')
 time_slider = Slider(slider_box, 'UNIX Time', valmin=s.date.timestamp() - 60.0*60.0*12.0, valmax=s.date.timestamp() + 12.0*60.0*60.0, valinit=s.date.timestamp())
 def update(val):
@@ -85,7 +89,14 @@ def update(val):
     s.cast_on(list_of_reflective_boundaries, ax)
     fig.canvas.draw_idle()
     m.check_for_reflection(s, ax)
+
+
+def button_callback(event):
+    m.generate_mission(ax)
+
+
 time_slider.on_changed(update)
 
+bnext.on_clicked(button_callback)
 
 plt.show()

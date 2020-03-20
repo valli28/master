@@ -1,106 +1,166 @@
-from mpl_toolkits.mplot3d import Axes3D
-import matplotlib.pyplot as plt
-from matplotlib import cm
-from pylab import meshgrid,linspace,zeros,dot,norm,cross,vstack,array,matrix,sqrt
 import numpy as np
 
+#This function returns a vector refering to the possible directions the agent can move(nor obstacle nor out of bounds)
+def perception(matrix,row,col):
+    #first position stands for the possibility of moving up
+    #Second for down, third position for left and fourth for right
+    array=np.array([False,False,False,False])
+    #the maximun positions of the matrix
+    superiorBorder=0
+    inferiorBorder=((matrix.shape)[0])-1
+    leftBorder=0
+    rightBorder=((matrix.shape)[1])-1
+    
+    #The 4 directions we can go
+    up=row-1
+    down=row+1
+    left=col-1
+    right=col+1
+    #Checks if  moving up will cause an IndexOutOfBound Exception if not ,he will check if there is an obstacle
+    #if no obstacle is found it'll make the  movement possible
+    if(up>=superiorBorder): #Checks for IndexOutOfBound Exception
+        if(matrix[up][col]==0): #Checks for obstacle
+            array[0]=True
+
+    if(down<=inferiorBorder): 
+        if(matrix[down][col]==0):
+            array[1]=True    
+
+    if(left>=leftBorder):
+        if(matrix[row][left]==0):
+            array[2]=True
+
+    if(right<=rightBorder):
+        if(matrix[row][right]==0):
+            array[3]=True
+    return array
+
+def updateMatrix(matrix,row,col):
+    perceptionArray=perception(matrix,row,col)
+    #The 4 directions we can go
+    up=row-1
+    down=row+1
+    left=col-1
+    right=col+1
+    list=[]
+
+    #If possible,the value of the direction we're gonna move will update with the current value of our square +1
+    #moving up
+    if(perceptionArray[0]):
+        matrix[up][col]=matrix[row][col]+1
+        list.append(up)
+        list.append(col)
+    #moving down
+    if(perceptionArray[1]):
+        matrix[down][col]=matrix[row][col]+1
+        list.append(down)
+        list.append(col)
+    #Moving left
+    if(perceptionArray[2]):
+        matrix[row][left]=matrix[row][col]+1
+        list.append(row)
+        list.append(left)
+    #Moving right:
+    if(perceptionArray[3]):
+        matrix[row][right]=matrix[row][col]+1
+        list.append(row)
+        list.append(right)
+
+    #the list return the coordinates of the squares we can move to
+    return list
+
+def completeCoefficientsMatrix(matriz,rowGoal,colGoal):
+    nuevosPunto=updateMatrix(matriz,rowGoal,colGoal)
+    while(len(nuevosPunto)>0):
+        row=nuevosPunto.pop(0)
+        col=nuevosPunto.pop(0)
+        #se intenta hacer una cola de manera que se de prioridad a los puntos mas prontos a evaluar
+        #y la cola se ira reduciendo expulsando el metodo pop, al tener longitud 0 significa que todos los puntos han sido tratados
+        nuevosPunto.extend(updateMatrix(matriz,row,col))
+
+#This funcion with the matrix and its coefficients already completed, will only be in charge of getting the shortest Path
+def waveFront(matrix,startingRow,StartingCol,EndingRow,EndingCol):
+    print("\n -----Coefficients Matrix-------")
+    completeCoefficientsMatrix(matrix,EndingRow,EndingCol)
+    print(matrix)
+
+    msj="["+str(startingRow)+"]["+str(StartingCol)+"]"
+    count=matrix[startingRow][StartingCol]
+    # the agent position is at first the starting row and the starting col
+    currentRow=startingRow
+    currentCol=StartingCol
+    #variables for the border of the matrix
+    superiorBorder=0
+    inferiorBorder=((matrix.shape)[0])-1
+    leftBorder=0
+    rightBorder=((matrix.shape)[1])-1
+    
+    while(count!=1):
+        #UP
+        if(currentRow-1 >= superiorBorder):
+            if(matrix[currentRow-1][currentCol]==(matrix[currentRow][currentCol]-1)): #I could've used the count -1 
+                currentRow=currentRow-1
+                msj=msj+"--->["+str(currentRow)+"]["+str(currentCol)+"]"
+                count-=1
+                continue
+        #DOWN
+        if(currentRow+1 <=inferiorBorder):
+            if(matrix[currentRow+1][currentCol]==(matrix[currentRow][currentCol]-1)):
+                 currentRow=currentRow+1
+                 msj=msj+"--->["+str(currentRow)+"]["+str(currentCol)+"]"
+                 count-=1
+                 continue
+        #LEFT
+        if(currentCol-1 >=leftBorder):
+            if(matrix[currentRow][currentCol-1]==(matrix[currentRow][currentCol]-1)):
+                 currentCol=currentCol-1
+                 msj=msj+"--->["+str(currentRow)+"]["+str(currentCol)+"]"
+                 count-=1
+
+                 continue
+        #RIGHT
+        if(currentCol+1 <=rightBorder):
+            if(matrix[currentRow][currentCol+1]==(matrix[currentRow][currentCol]-1)):
+                 currentCol=currentCol+1
+                 msj=msj+"--->["+str(currentRow)+"]["+str(currentCol)+"]"
+                 count-=1
+                 continue
+    #print(count)
+    print("\n---Shortest Parth from [{},{}] to [{},{}] -----".format(startingRow,StartingCol,EndingRow,EndingCol))
+    print(msj)
+        
 
 
-def draw_vector(o, u, axes):
-    ''' o is the origin of the vector while u is the direction '''
-    soa = np.array([o[0], o[1], o[2], u[0], u[1], u[2]])
-    X, Y, Z, U, V, W = zip(soa)
-    axes.quiver(X, Y, Z, U, V, W) # Add color
+print("------Obstacles Allocation---------")
+obstacle=True
+default=input("do you want to use default matrix dimension(4x5) and obstacles? y/n: ")
+if(default=='y'):
+    obstacle=False
+    nrows=4
+    ncols=5
+    matriz=np.zeros((nrows,ncols))
+    matriz[1,2]=-1
+    matriz[1,3]=-1
+    matriz[2,3]=-1
+    matriz[3,3]=-1
+else:
+    nrows=int(input("type the number of row: "))
+    ncols=int(input("type the numbers of columns: "))
+    matriz=np.zeros((nrows,ncols))
+while(obstacle==True):
+    obstacleRow=int(input("type the row of the obstacle: "))
+    obstacleCol=int(input("type the column of the obstacle: "))
+    matriz[obstacleRow][obstacleCol]=-1
+    option=input("do you want to add one more obstacle?? y/n: ")
+    if(option!="y"):
+        obstacle=False
 
-def rotmatrix(axis,costheta):
-    """ Calculate rotation matrix
+print("\n------Start point------")
+rowS=int(input("row of start point----->"))
+colS=int(input("col of start point----->"))
 
-    Arguments:
-    - `axis`     : Rotation axis
-    - `costheta` : Rotation angle
-    """
-    x,y,z = axis # Actually not the normal of the plane, but an axis parallel to the plane
-    c = costheta # and this angle rotates around that parallel.
-    s = sqrt(1-c*c)
-    C = 1-c
-
-    return  matrix([[ x*x*C+c,    x*y*C-z*s,  x*z*C+y*s ],
-                    [ y*x*C+z*s,  y*y*C+c,    y*z*C-x*s ],
-                    [ z*x*C-y*s,  z*y*C+x*s,  z*z*C+c   ]])
-
-def plane(Lx,Ly,Nx,Ny,n,d, axes):
-    """ Calculate points of a generic plane 
-
-    Arguments:
-    - `Lx` : Plane Length first direction
-    - `Ly` : Plane Length second direction
-    - `Nx` : Number of points, first direction
-    - `Ny` : Number of points, second direction
-    - `n`  : Plane orientation, normal vector
-    - `d`  : distance from the origin
-    """
-
-    x = linspace(-Lx/2,Lx/2,Nx)
-    y = linspace(-Ly/2,Ly/2,Ny)
-    # Create the mesh grid, of a XY plane sitting on the orgin
-    X,Y = meshgrid(x,y)
-    Z   = zeros([Nx,Ny])
-    n0 = array([0,0,1])
-    n0 = n0 / np.linalg.norm(n0)
-
-    # Rotate plane to the given normal vector
-    if any(n0!=n):
-        costheta = dot(n0,n)/(norm(n0)*norm(n))
-        axis     = cross(n0,n)/norm(cross(n0,n))
-
-        draw_vector(array([0, 0, 0]), n0, axes)
-        draw_vector(array([0, 0, 0]), axis, axes)
-
-        rotMatrix = rotmatrix(axis,costheta)
-        XYZ = vstack([X.flatten(),Y.flatten(),Z.flatten()])
-        X,Y,Z = array(rotMatrix*XYZ).reshape(3,Nx,Ny)
-    else:
-        print("oops")
-
-    dVec = (n/norm(n))*d
-    X,Y,Z = X+dVec[0],Y+dVec[1],Z+dVec[2]
-    return X,Y,Z
-
-
-if __name__ == "__main__":
-
-    # Plot as many planes as you like
-    Nplanes = 10
-
-    # Set color list from a cmap
-    colorList = cm.jet(linspace(0,1,Nplanes))
-
-    # List of Distances
-    distList = linspace(-10,10,Nplanes)
-
-    # Plane orientation - normal vector
-    normalVector = array([1, 1, 0]) # Y direction
-    normalVector = normalVector/np.linalg.norm(normalVector)
-
-    # Create figure
-    fig = plt.figure()
-    ax = fig.gca(projection='3d')
-
-
-    # Calculate plane
-    X,Y,Z = plane(20,20,100,100,normalVector,0, ax)
-
-    ax.plot_surface(X, Y, Z, rstride=5, cstride=5,
-                    alpha=0.8, color=colorList[0])
-
-    draw_vector(array([0, 0, 0]), normalVector, ax)
-
-    # Set plot display parameters    
-    ax.set_xlabel('X')
-    ax.set_xlim(-10, 10)
-    ax.set_ylabel('Y')
-    ax.set_ylim(-10, 10)
-    ax.set_zlabel('Z')
-    ax.set_zlim(-10, 10)
-
-    plt.show()
+print("\n------End point------")
+rowE=int(input("row of End point----->"))
+colE=int(input("col of End point----->"))
+matriz[rowE][colE]=1
+waveFront(matriz,rowS,colS,rowE,colE)
