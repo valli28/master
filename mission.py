@@ -4,19 +4,24 @@ import matplotlib.pyplot as plt
 
 class Mission():
     def __init__(self, l_overlap, h_overlap):
-        # Initialize parameters from constructor (related to the mission)
-        self.l_overlap = l_overlap # in percentages
-        self.h_overlap = h_overlap # in percentages
-
-        # Initialize constant parameters such as camera, drone stuff etc.
-        self.fov = 75 # degrees
-        self.sensor_size = np.array([21, 16]) # mm
-
         self.mission_planes = []
         self.mat_planes = []
         self.colortuple = ('r', 'b')
         self.tiles_affected_by_reflection = [] 
         self.affected_tiles_angles = []
+
+        
+        # Ideally, the "offset" from the building is enough to accomodate for multipathing and other bad influences from being close to buildings (magnetometer etc.)
+        # If the purpose of the flight is to find cracks in the material, you would have to find a camera with a higher resolution or maybe a narrower FOV.
+
+
+        # Initialize constant parameters such as camera, drone stuff etc.
+        self.fov = 75 # degrees
+        self.sensor_size = np.array([21, 16]) # mm
+        # Initialize parameters from constructor (related to the mission)
+        self.l_overlap = l_overlap # in percentages
+        self.h_overlap = h_overlap # in percentages
+
 
         self.offset = 8.0 # m
 
