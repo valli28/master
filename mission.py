@@ -1,6 +1,7 @@
 import numpy as np
 from mpl_toolkits.mplot3d import axes3d
 import matplotlib.pyplot as plt
+import math
 
 class Mission():
     def __init__(self, l_overlap, h_overlap):
@@ -11,16 +12,37 @@ class Mission():
         self.affected_tiles_angles = []
 
         
-        # Ideally, the "offset" from the building is enough to accomodate for multipathing and other bad influences from being close to buildings (magnetometer etc.)
-        # If the purpose of the flight is to find cracks in the material, you would have to find a camera with a higher resolution or maybe a narrower FOV.
-
-
-        # Initialize constant parameters such as camera, drone stuff etc.
-        self.fov = 75 # degrees
-        self.sensor_size = np.array([21, 16]) # mm
         # Initialize parameters from constructor (related to the mission)
         self.l_overlap = l_overlap # in percentages
         self.h_overlap = h_overlap # in percentages
+
+
+        # Ideally, the "offset" from the building is enough to accomodate for multipathing and other bad influences from being close to buildings (magnetometer etc.)
+        # If the purpose of the flight is to find cracks in the material, you would have to find a camera with a higher resolution or maybe a narrower FOV.
+        # Let's try to see what happens if we want to say "I want to see "sub-brick details" like differences in betwee the bricks (mortar)" 
+        # After a very quick survey, the distance between the bricks in my home is anything between 1cm and 3cm. A Ground Sampling Distance of >1cm is ideal.
+        # Let's see if that is possible
+        self.GSD = 1.0 #cm per pixel. Less is better (higher ground-resolution)
+
+        # Initialize constant parameters such as camera, drone stuff etc.
+        sensor_resolution = np.array([160, 120]) # pixels
+        lens = np.array([57.0, 44.0])  # degrees so they say that the FOV is 57 degrees
+
+        sensor_size = np.array([21.0, 16.0]) # mm
+        sensor_size_diagonal = math.hypot(sensor_size[0], sensor_size[1])
+        # For the FLIR DUO R (the small old camera. It's actually discontinued)
+        # For a normal lens, the diagonal field of view can be calculated FOV = 2 arctan(SensorSize/2f), where f is focal length.
+        fov = math.hypot(lens[0], lens[1]) #calculating the hypotenuse
+        
+        #f = (2.0 * math.tan(lens[0] / 2.0) ) / sensor_size[0] # Focal length is approx the distance from the lens to the sensor.
+
+        f = 9 #mm
+        fov_lol = 2*math.atan(0.5 * lens[0] / f) * math.pi*180
+
+        print(fov_lol)
+        
+
+
 
 
         self.offset = 8.0 # m
