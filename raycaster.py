@@ -30,7 +30,7 @@ lon = 10.325267
 utm_center = utm.from_latlon(lat, lon)
 
 s = Sun(lat, lon)
-m = Mission(80, 80)
+m = Mission(0.8, 0.8)
 
 local1 = [utm_center[0] - utm1[0], utm_center[1] - utm1[1]]
 local2 = [utm_center[0] - utm2[0], utm_center[1] - utm2[1]]

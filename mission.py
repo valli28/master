@@ -23,29 +23,37 @@ class Mission():
         # After a very quick survey, the distance between the bricks in my home is anything between 1cm and 3cm. A Ground Sampling Distance of >1cm is ideal.
         # Let's see if that is possible
         self.GSD = 1.0 #cm per pixel. Less is better (higher ground-resolution)
+        self.GSD *= 0.5 # Due to Nyquist's sampling theorem i guess..
 
+
+        # For the FLIR Duo Pro R (not the camera I used. It's discontinued and I couldn't find nor calculate the focal length anywhere...)
+        # The FLIR Duo Pro R camera can be purchased in many different variations, both in terms of thermal resolution, FOV and refresh-rate.
+        #Let's take the best resolution, no matter the refresh-rate and middle-range FOV.
         # Initialize constant parameters such as camera, drone stuff etc.
-        sensor_resolution = np.array([160, 120]) # pixels
-        lens = np.array([57.0, 44.0])  # degrees so they say that the FOV is 57 degrees
+        sensor_resolution = np.array([640, 512])# pixels
 
-        sensor_size = np.array([21.0, 16.0]) # mm
-        sensor_size_diagonal = math.hypot(sensor_size[0], sensor_size[1])
-        # For the FLIR DUO R (the small old camera. It's actually discontinued)
-        # For a normal lens, the diagonal field of view can be calculated FOV = 2 arctan(SensorSize/2f), where f is focal length.
-        fov = math.hypot(lens[0], lens[1]) #calculating the hypotenuse
-        
-        #f = (2.0 * math.tan(lens[0] / 2.0) ) / sensor_size[0] # Focal length is approx the distance from the lens to the sensor.
+        self.aov = np.array([32.0, 26.0])  # degrees so they say that the AOV is 32 degrees
+        #diag_fov = math.hypot(lens[0], lens[1]) #calculating the hypotenuse
 
-        f = 9 #mm
-        fov_lol = 2*math.atan(0.5 * lens[0] / f) * math.pi*180
+        pixel_pitch = 17.0 / 1000 # pixel pitch (distance between one pixel core to the next) is 17 micrometers
+        sensor_size = sensor_resolution * pixel_pitch
 
-        print(fov_lol)
-        
+        #sensor_size_diagonal = math.hypot(sensor_size[0], sensor_size[1])
+        f = 25 # focal length in mm.
+    
+        self.h = np.round(min((f * sensor_resolution * self.GSD) * 1.0 / sensor_size) / 100.0, 2) # Divide by 100 to get meters from cm(GSD).
+        print("With a minimum GSD of " + str(self.GSD) + "cm the UAV can fly at a maximum distance of " + str(self.h) + "m from the walls")
+
+        self.fov = 2.0 * (np.tan(self.aov * 0.5) * self.h) # This is the "field" that the camera can see. In the object-plane, how much does the x and y axes see. 2 (TAN (ANGLE OF VIEW/2) X DISTANCE TO SUBJECT) 
+
+        self.camera_pitch = self.aov[1] * 0.6 * math.pi / 180 # in radians
+
+        self.altitude = (math.sin(self.camera_pitch) * self.h) / math.sin(90.0 - self.camera_pitch) # 
+        print("... and it will by flying at a minimum altitude of " + str(self.altitude) + "m")
 
 
 
-
-        self.offset = 8.0 # m
+              
 
     def check_for_reflection(self, sun, axes):
         # sun.roa is a n x 6 shape array where n is the number of vectors in the program
@@ -101,8 +109,8 @@ class Mission():
 
         for i in range(len(list_of_planes)):          
             # Fetch the planes of the building and offset them with the normal of that plane
-            newX = list_of_planes[i].X - list_of_planes[i].normal[0] * self.offset
-            newY = list_of_planes[i].Y - list_of_planes[i].normal[1] * self.offset
+            newX = list_of_planes[i].X - list_of_planes[i].normal[0] * self.h
+            newY = list_of_planes[i].Y - list_of_planes[i].normal[1] * self.h
 
             self.mission_planes[i].X = newX
             self.mission_planes[i].Y = newY
@@ -163,10 +171,23 @@ class Mission():
 
             # We now have to insert lines into the plane that shall help form the correct paths. 
             # The distance and lengths of these lines have to be calculated from parameters such as fov, gsd, etc.
-            
+
+            # Depending on the shape of the building facade, we either do a Z-type or N-type pattern (side to side or up and down.)
+            z_or_n = []
+            if len(integer_tile_map[:, 0]) >= len(integer_tile_map[0:]): # if the row-dimension is bigger
+                z_or_n = 'z'
+            else:
+                z_or_n = 'n'
+
+            z_or_n = 'n'
+            # Depending on the FOV we should take out any false-positive tiles on the mission-plane i.e. tiles that might be affected by sunlight, but not in the current frame.
+            # If the window that affects the tiles in the mission-plane isn't in-frame, it should be disregarded.
+            if z_or_n == 'n':
+                period = self.fov[0]*(1.0-self.h_overlap) # THis is not in tiles yet but in meters
+                amplitude = int(len(integer_tile_map[0:]) - (self.l_overlap*self.fov[1])) + 1 # We round up by casting to integer and +1
 
 
-            print(integer_tile_map)
+            #print(integer_tile_map)
 
             
 
