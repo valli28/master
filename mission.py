@@ -32,7 +32,7 @@ class Mission():
         # Initialize constant parameters such as camera, drone stuff etc.
         sensor_resolution = np.array([640, 512])# pixels
 
-        self.aov = np.array([32.0, 26.0])  # degrees so they say that the AOV is 32 degrees
+        self.aov = np.array([25.0, 20.0])  # degrees so they say that the AOV is 32 degrees
         #diag_fov = math.hypot(lens[0], lens[1]) #calculating the hypotenuse
 
         pixel_pitch = 17.0 / 1000 # pixel pitch (distance between one pixel core to the next) is 17 micrometers
@@ -44,9 +44,8 @@ class Mission():
         self.h = np.round(min((f * sensor_resolution * self.GSD) * 1.0 / sensor_size) / 100.0, 2) # Divide by 100 to get meters from cm(GSD).
         print("With a minimum GSD of " + str(self.GSD) + "cm the UAV can fly at a maximum distance of " + str(self.h) + "m from the walls")
 
-        self.fov = 2.0 * (np.tan(self.aov * 0.5) * self.h) # This is the "field" that the camera can see. In the object-plane, how much does the x and y axes see. 2 (TAN (ANGLE OF VIEW/2) X DISTANCE TO SUBJECT) 
-
-        self.camera_pitch = self.aov[1] * 0.6 * math.pi / 180 # in radians
+        self.fov = 2.0 * (np.tan(self.aov*math.pi / 180.0 * 0.5) * self.h) # This is the "field" that the camera can see. In the object-plane, how much does the x and y axes see. 2 (TAN (ANGLE OF VIEW/2) X DISTANCE TO SUBJECT) 
+        self.camera_pitch = self.aov[1] * 0.6  # in radians
 
         self.altitude = (math.sin(self.camera_pitch) * self.h) / math.sin(90.0 - self.camera_pitch) # 
         print("... and it will by flying at a minimum altitude of " + str(self.altitude) + "m")
@@ -116,16 +115,15 @@ class Mission():
             self.mission_planes[i].Y = newY
 
             # Make a checker pattern plot to see how you make a facecolor-map
-
             colors = np.empty(list_of_planes[i].X.shape, dtype=str)
-            for y in range(len(list_of_planes[i].y)):
+            for z in range(len(list_of_planes[i].z)):
                 for x in range(len(list_of_planes[i].x)):
-                    colors[x, y] = self.colortuple[1]
+                    colors[z, x] = self.colortuple[1]
             #print(colors)
             face_color_array = colors
 
             # Plot the new offset plane
-            self.mat_planes.append(axes.plot_surface(newX, newY, list_of_planes[0].Z, alpha=0.8, facecolors = face_color_array, linewidth = 0))
+            self.mat_planes.append(axes.plot_surface(newX, newY, list_of_planes[i].Z, alpha=0.8, facecolors = face_color_array, linewidth = 0))
         
         self.tiles_affected_by_reflection =  [None] * len(self.mission_planes)
         #print(self.tiles_affected_by_reflection)
@@ -133,7 +131,7 @@ class Mission():
 
         for i in range(len(self.tiles_affected_by_reflection)):
             # Initialise the tiles affected as a list of planes.
-            self.tiles_affected_by_reflection[i] = np.array(self.mission_planes[0].X, dtype=str)
+            self.tiles_affected_by_reflection[i] = np.array(self.mission_planes[i].X, dtype=str)
             self.tiles_affected_by_reflection[i][:] = self.colortuple[1]
 
             # Initialize the affected tiles-angles (for each plane we have the first and last angle at which they are affected.) (might not be scalable in terms of the amount of windows... if they are angled differently.)
@@ -156,18 +154,17 @@ class Mission():
         for i in range(len(copy_tiles)):
             # The copy-tiles is a list of n-planes with strings, representing colors. b for blue, r for red etc.
             # First, we insert convert that char-plane into a integer-plane, where b is 0 and r is something high that we then use to count down from.
-
+            
             integer_tile_map = np.zeros_like(copy_tiles[i], dtype=int)
             integer_tile_map = (copy_tiles[i] == 'r') * 1
             # The integer_tile_map is now a single plane in this loop that is 1 for red and 0 for b.
-
             # make a border in the integer_tile_map of 1's
             # rows:
             integer_tile_map[0:1] = 1
             integer_tile_map[len(integer_tile_map) - 1:len(integer_tile_map)] = 1
             # columns:
             integer_tile_map[:, 0] = 1
-            integer_tile_map[:, len(integer_tile_map) - 1] = 1
+            integer_tile_map[:, len(integer_tile_map[1]) - 1] = 1
 
             # We now have to insert lines into the plane that shall help form the correct paths. 
             # The distance and lengths of these lines have to be calculated from parameters such as fov, gsd, etc.
@@ -183,9 +180,27 @@ class Mission():
             # Depending on the FOV we should take out any false-positive tiles on the mission-plane i.e. tiles that might be affected by sunlight, but not in the current frame.
             # If the window that affects the tiles in the mission-plane isn't in-frame, it should be disregarded.
             if z_or_n == 'n':
-                period = self.fov[0]*(1.0-self.h_overlap) # THis is not in tiles yet but in meters
+                period =  abs(int(self.fov[0]*(1.0-self.h_overlap) * 1.0 / 0.1)) + 1
+                if period % 2 == 1: #  This has to be an even number
+                    period -= 1
+                # TODO:  the subtraction term in the amplitude should be divided by 0.1 (the amount of meters in each tile). With the size of this building though, we don't have to do any zigzag...
                 amplitude = int(len(integer_tile_map[0:]) - (self.l_overlap*self.fov[1])) + 1 # We round up by casting to integer and +1
 
+                if amplitude % 2 == 1: # This also has to be an even number
+                    amplitude -= 1
+
+                print(period, amplitude)
+                flip = 0
+                for i in range(period, len(integer_tile_map[0]), period):
+                    
+                    if not flip%2: 
+                        integer_tile_map[flip%2*len(integer_tile_map):amplitude, i] = 1
+                    else:
+                        integer_tile_map[len(integer_tile_map)-amplitude: flip%2*len(integer_tile_map), i] = 1
+                    flip += 1
+
+                
+                print(integer_tile_map)
 
             #print(integer_tile_map)
 

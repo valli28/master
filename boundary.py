@@ -31,7 +31,7 @@ class Boundary():
         #self.X, self.Y, self.Z = self.plane(np.linalg.norm(self.p01), np.linalg.norm(self.p02), 20, 20, self.normal, self.z[2])
 
 
-        Nx = Ny = Nz = 15
+        Nx = Ny = Nz = 0.10 # how many meters one tile should repressent.
         self.X, self.Y, self.Z = self.plane_matrices(Nx, Ny, Nz)
 
         '''
@@ -79,16 +79,24 @@ class Boundary():
 
         # TODO: Make sure this also works with planes that are not vertical (which they currently all are...) like roofs etc.
 
+        nx = int(abs(self.p0[0] - self.p1[0]) / Nx)
+        ny = int(abs(self.p0[1] - self.p1[1]) / Ny)
+        if nx > ny:
+            ny = nx
+        else:
+            nx = ny
+        nz = int(abs(self.p0[2] - self.p2[2]) / Nz)
+        
         if self.p02[0] == 0: # If planes are vertical:
-            self.x = np.linspace(self.p0[0], self.p1[0], Nx)
-            self.y = np.linspace(self.p0[1], self.p1[1], Ny)
-            self.z = np.linspace(self.p0[2], self.p2[2], Nz)
+            self.x = np.linspace(self.p0[0], self.p1[0], nx)
+            self.y = np.linspace(self.p0[1], self.p1[1], ny)
+            self.z = np.linspace(self.p0[2], self.p2[2], nz)
 
         # Does not work: 
         if self.p02[2] == 0: # If planes are horizontal (not varying in z i guess...)
-            self.x = np.linspace(self.p0[0], self.p1[0], Nx)
-            self.y = np.linspace(self.p0[1], self.p2[1], Ny)
-            self.z = np.linspace(self.p0[2], self.p2[2], Nz)
+            self.x = np.linspace(self.p0[0], self.p1[0], nx)
+            self.y = np.linspace(self.p0[1], self.p2[1], ny)
+            self.z = np.linspace(self.p0[2], self.p2[2], nz)
 
         
         xx, zz = np.meshgrid(self.x, self.z)

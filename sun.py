@@ -56,15 +56,18 @@ class Sun():
 
         # Create soa in format: [X, Y, Z, U, V, W] where xyz is origin point of vector and uvw is vector
         xyz_end = []
-        end_index = len(surfaces[0].x) - 1
+        end_index_x = len(surfaces[0].x) - 1
+        end_index_y = len(surfaces[0].y) - 1
+        end_index_z = len(surfaces[0].z) - 1
+        
         soa = [] # Sun-vectors
         self.roa = [] # Reflection vectors
         for i in range(len(surfaces)): 
             # First we define the end-points of the vectors"
             xyz_end.append([surfaces[i].x[0], surfaces[i].y[0], surfaces[i].z[0]])
-            xyz_end.append([surfaces[i].x[end_index], surfaces[i].y[end_index], surfaces[i].z[0]])
-            xyz_end.append([surfaces[i].x[0], surfaces[i].y[0], surfaces[i].z[end_index]])
-            xyz_end.append([surfaces[i].x[end_index], surfaces[i].y[end_index], surfaces[i].z[end_index]])
+            xyz_end.append([surfaces[i].x[end_index_x], surfaces[i].y[end_index_y], surfaces[i].z[0]])
+            xyz_end.append([surfaces[i].x[0], surfaces[i].y[0], surfaces[i].z[end_index_z]])
+            xyz_end.append([surfaces[i].x[end_index_x], surfaces[i].y[end_index_y], surfaces[i].z[end_index_z]])
 
             # Project the sunrays backwards from the endpoints towards the direction of the sun
             
