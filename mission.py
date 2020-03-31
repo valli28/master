@@ -2,6 +2,7 @@ import numpy as np
 from mpl_toolkits.mplot3d import axes3d
 import matplotlib.pyplot as plt
 import math
+from skimage.morphology import skeletonize, thin
 
 class Mission():
     def __init__(self, l_overlap, h_overlap):
@@ -137,7 +138,36 @@ class Mission():
             # Initialize the affected tiles-angles (for each plane we have the first and last angle at which they are affected.) (might not be scalable in terms of the amount of windows... if they are angled differently.)
             self.affected_tiles_angles[i] = [[0, 0, 0], [0, 0, 0]]
 
+    def brushfire(self, tile_map):
+        manhattan = np.array([[0, 1, 0],
+                              [1, 1, 1],
+                              [0, 1, 0]])
+        eight_way =np.array([[1, 1, 1],
+                             [1, 1, 1],
+                             [1, 1, 1]])
+        kernel = manhattan
 
+        #invert the tile-map 
+        tile_map = 1 - tile_map
+
+        skeleton = skeletonize(tile_map)
+
+        fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(8, 4),
+                                sharex=True, sharey=True)
+
+        ax = axes.ravel()
+
+        ax[0].imshow(tile_map, cmap=plt.cm.gray)
+        ax[0].set_title('original')
+        ax[0].axis('off')
+
+        ax[1].imshow(skeleton, cmap=plt.cm.gray)
+        ax[1].set_title('skeleton')
+        ax[1].axis('off')
+        fig.tight_layout()
+        plt.show()
+        
+                
 
     def generate_mission(self, axes):
 
@@ -189,7 +219,6 @@ class Mission():
                 if amplitude % 2 == 1: # This also has to be an even number
                     amplitude -= 1
 
-                print(period, amplitude)
                 flip = 0
                 for i in range(period, len(integer_tile_map[0]), period):
                     
@@ -200,7 +229,7 @@ class Mission():
                     flip += 1
 
                 
-                print(integer_tile_map)
+                self.brushfire(integer_tile_map)
 
             #print(integer_tile_map)
 
