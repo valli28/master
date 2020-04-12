@@ -137,6 +137,7 @@ class Mission():
 
             # Initialize the affected tiles-angles (for each plane we have the first and last angle at which they are affected.) (might not be scalable in terms of the amount of windows... if they are angled differently.)
             self.affected_tiles_angles[i] = [[0, 0, 0], [0, 0, 0]]
+            # TODO: Use these angles to make sure that the AOV of the camera is taken into consideration. If rays are being reflected towards the camera froma source that is out of frame, then it doesn't matter.
 
     def brushfire(self, tile_map):
         manhattan = np.array([[0, 1, 0],
