@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 from pysolar.solar import *
 import datetime
 import numpy as np
@@ -100,3 +101,21 @@ time_slider.on_changed(update)
 bnext.on_clicked(button_callback)
 
 plt.show()
+
+
+'''
+consider doing the following, converting it to a rosnode instead of just a package with scripts
+
+
+if __name__ == '__main__':
+    try:
+        oracle = OracleClass(mission_alt=15.0)
+        oracle.run()
+    except rospy.ROSInterruptException:
+        exit(0)
+    except KeyboardInterrupt:
+        exit(0)
+
+
+'''
+
