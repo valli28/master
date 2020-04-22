@@ -1,0 +1,4 @@
+Symlinking /home/valthor/workspace/master/devel/share/offb/cmake/offbConfig.cmake
+Symlinking /home/valthor/workspace/master/devel/share/offb/cmake/offbConfig-version.cmake
+Symlinking /home/valthor/workspace/master/devel/lib/pkgconfig/offb.pc
+Symlinking /home/valthor/workspace/master/devel/lib/offb/offb_node

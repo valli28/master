@@ -4,3 +4,7 @@ lufthavn24feb/
 pyny3d/
 __pycache__/*
 .pyc
+venv/
+build/
+devel/
+.catkin_tools/
