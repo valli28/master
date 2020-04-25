@@ -73,7 +73,7 @@ class OffboardCommon():
         self.state_sub = rospy.Subscriber('mavros/state', State,
                                           self.state_callback)
 
-        rospy.init_node('offb')
+
 
 
     #def tearDown(self):

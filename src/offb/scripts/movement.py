@@ -48,60 +48,25 @@ from __future__ import division
 PKG = 'px4'
 
 import rospy
-import glob
-import json
+
+
 import math
 import os
 #from px4tools import ulog
 import sys
+from geometry_msgs.msg import Pose, PoseStamped, Point, Quaternion, TwistStamped, Quaternion, Vector3
 from mavros import mavlink
-from mavros_msgs.msg import Mavlink, Waypoint, WaypointReached
-from offb import OffboardCommon
+from mavros_msgs.msg import State, ExtendedState, Mavlink, WaypointReached, AttitudeTarget
+from mavros_msgs.srv import CommandBool, SetMode
 from pymavlink import mavutil
-from six.moves import xrange
+from offb import OffboardCommon
 from threading import Thread
+from tf.transformations import quaternion_from_euler
+from six.moves import xrange
+from std_msgs.msg import Header
 
+from velocity_controller import VelocityController
 
-
-def read_mission(mission_filename):
-    wps = []
-    with open(mission_filename, 'r') as f:
-        for waypoint in read_plan_file(f):
-            wps.append(waypoint)
-            rospy.logdebug(waypoint)
-
-    # set first item to current
-    if wps:
-        wps[0].is_current = True
-
-    return wps
-
-
-def read_plan_file(f):
-    d = json.load(f)
-    if 'mission' in d:
-        d = d['mission']
-
-    if 'items' in d:
-        for wp in d['items']:
-            yield Waypoint(
-                is_current=False,
-                frame=int(wp['frame']),
-                command=int(wp['command']),
-                param1=float('nan'
-                             if wp['params'][0] is None else wp['params'][0]),
-                param2=float('nan'
-                             if wp['params'][1] is None else wp['params'][1]),
-                param3=float('nan'
-                             if wp['params'][2] is None else wp['params'][2]),
-                param4=float('nan'
-                             if wp['params'][3] is None else wp['params'][3]),
-                x_lat=float(wp['params'][4]),
-                y_long=float(wp['params'][5]),
-                z_alt=float(wp['params'][6]),
-                autocontinue=bool(wp['autoContinue']))
-    else:
-        raise IOError("no mission items")
 
 
 class Movement(OffboardCommon):
@@ -111,44 +76,54 @@ class Movement(OffboardCommon):
 
     def __init__(self):
         super().__init__()
+        rospy.init_node('offb')
+
+        self.rate = rospy.Rate(10)
 
         self.mission_item_reached = -1  # first mission item is 0
         self.mission_name = ""
 
+        # Pubs
         self.mavlink_pub = rospy.Publisher('mavlink/to', Mavlink, queue_size=1)
-        self.mission_item_reached_sub = rospy.Subscriber(
-            'mavros/mission/reached', WaypointReached,
-            self.mission_item_reached_callback)
+        self.set_velocity_pub = rospy.Publisher('mavros/setpoint_velocity/cmd_vel', TwistStamped, queue_size=10) # Queue_size is 10 as the example from Intel's Aero-drone's sample app
 
-        # need to simulate heartbeat to prevent datalink loss detection
-        self.hb_mav_msg = mavutil.mavlink.MAVLink_heartbeat_message(
-            mavutil.mavlink.MAV_TYPE_GCS, 0, 0, 0, 0, 0)
-        self.hb_mav_msg.pack(mavutil.mavlink.MAVLink('', 2, 1))
-        self.hb_ros_msg = mavlink.convert_to_rosmsg(self.hb_mav_msg)
-        self.hb_thread = Thread(target=self.send_heartbeat, args=())
-        self.hb_thread.daemon = True
-        self.hb_thread.start()
+        # Subs
+        #self.velocity_sub = rospy.Subscriber('/mavros/local_position/velocity', TwistStamped, callback=self.velocity_callback)
+        self.state_sub = rospy.Subscriber('/mavros/state', State, callback=self.state_callback)
 
-    #def tearDown(self):
-    #    super(MavrosMissionTest, self).tearDown()
+
+        # Services
+        self.arming_srv = rospy.ServiceProxy("/mavros/cmd/arming", CommandBool)
+        self.mode_srv = rospy.ServiceProxy("/mavros/set_mode", SetMode)
+
+
+        # ATTITUDE STUFF
+        self.att = AttitudeTarget()
+
+        self.att_setpoint_pub = rospy.Publisher(
+            'mavros/setpoint_raw/attitude', AttitudeTarget, queue_size=1)
+
+        # send setpoints in seperate thread to better prevent failsafe
+        self.att_thread = Thread(target=self.send_att, args=())
+        self.att_thread.daemon = True
+        self.att_thread.start()
+
+
+
+        self.current_velocity = TwistStamped()
+        self.desired_velocity = TwistStamped()
+
+        self.current_pose = PoseStamped()
+        self.desired_pose = PoseStamped()
+
+        self.isReadyToFly = False
+
 
     #
     # Helper methods
     #
-    def send_heartbeat(self):
-        rate = rospy.Rate(2)  # Hz
-        while not rospy.is_shutdown():
-            self.mavlink_pub.publish(self.hb_ros_msg)
-            try:  # prevent garbage in console output when thread is killed
-                rate.sleep()
-            except rospy.ROSInterruptException:
-                pass
 
-    def mission_item_reached_callback(self, data):
-        if self.mission_item_reached != data.wp_seq:
-            rospy.loginfo("mission item reached: {0}".format(data.wp_seq))
-            self.mission_item_reached = data.wp_seq
-
+    
     def distance_to_wp(self, lat, lon, alt):
         """alt(amsl): meters"""
         R = 6371000  # metres
@@ -168,113 +143,109 @@ class Movement(OffboardCommon):
         rospy.logdebug("d: {0}, alt_d: {1}".format(d, alt_d))
         return d, alt_d
 
-    def reach_position(self, lat, lon, alt, timeout, index):
-        """alt(amsl): meters, timeout(int): seconds"""
-        rospy.loginfo(
-            "trying to reach waypoint | lat: {0:.9f}, lon: {1:.9f}, alt: {2:.2f}, index: {3}".
-            format(lat, lon, alt, index))
-        best_pos_xy_d = None
-        best_pos_z_d = None
-        reached = False
-        mission_length = len(self.mission_wp.waypoints)
+    def send_att(self):
+        rate = rospy.Rate(10)  # Hz
+        self.att.body_rate = Vector3()
+        self.att.header = Header()
+        self.att.header.frame_id = "base_footprint"
+        self.att.orientation = Quaternion(*quaternion_from_euler(-0.25, 0.15,
+                                                                 0))
+        self.att.thrust = 0.7
+        self.att.type_mask = 7  # ignore body rate
 
-        # does it reach the position in 'timeout' seconds?
+        while not rospy.is_shutdown():
+            self.att.header.stamp = rospy.Time.now()
+            self.att_setpoint_pub.publish(self.att)
+            try:  # prevent garbage in console output when thread is killed
+                rate.sleep()
+            except rospy.ROSInterruptException:
+                pass
+
+    #
+    # Test method
+    #
+    def test_attctl(self):
+        """Test offboard attitude control"""
+        # boundary to cross
+        boundary_x = 200
+        boundary_y = 100
+        boundary_z = 20
+
+        # make sure the simulation is ready to start the mission
+        self.wait_for_topics(60)
+        self.wait_for_landed_state(mavutil.mavlink.MAV_LANDED_STATE_ON_GROUND,
+                                   10, -1)
+
+        self.log_topic_vars()
+        self.set_mode("OFFBOARD", 5)
+        self.set_arm(True, 5)
+
+        rospy.loginfo("run mission")
+        rospy.loginfo("attempting to cross boundary | x: {0}, y: {1}, z: {2}".
+                      format(boundary_x, boundary_y, boundary_z))
+        # does it cross expected boundaries in 'timeout' seconds?
+        timeout = 90  # (int) seconds
         loop_freq = 2  # Hz
         rate = rospy.Rate(loop_freq)
+        crossed = False
         for i in xrange(timeout * loop_freq):
-            pos_xy_d, pos_z_d = self.distance_to_wp(lat, lon, alt)
-
-            # remember best distances
-            if not best_pos_xy_d or best_pos_xy_d > pos_xy_d:
-                best_pos_xy_d = pos_xy_d
-            if not best_pos_z_d or best_pos_z_d > pos_z_d:
-                best_pos_z_d = pos_z_d
-
-            # FCU advanced to the next mission item, or finished mission
-            reached = (
-                # advanced to next wp
-                (index < self.mission_wp.current_seq)
-                # end of mission
-                or (index == (mission_length - 1) and
-                    self.mission_item_reached == index))
-
-            if reached:
-                rospy.loginfo(
-                    "position reached | pos_xy_d: {0:.2f}, pos_z_d: {1:.2f}, index: {2} | seconds: {3} of {4}".
-                    format(pos_xy_d, pos_z_d, index, i / loop_freq, timeout))
+            if (self.local_position.pose.position.x > boundary_x and
+                    self.local_position.pose.position.y > boundary_y and
+                    self.local_position.pose.position.z > boundary_z):
+                rospy.loginfo("boundary crossed | seconds: {0} of {1}".format(
+                    i / loop_freq, timeout))
+                crossed = True
                 break
-            elif i == 0 or ((i / loop_freq) % 10) == 0:
-                # log distance first iteration and every 10 sec
-                rospy.loginfo(
-                    "current distance to waypoint | pos_xy_d: {0:.2f}, pos_z_d: {1:.2f}, index: {2}".
-                    format(pos_xy_d, pos_z_d, index))
 
             try:
                 rate.sleep()
             except rospy.ROSException:
                 exit(0)
 
-
-    #
-    # Test method
-    #
-    def test_mission(self):
-        """Test mission"""
-        if len(sys.argv) < 2:
-            print("usage: mission_test.py mission_file")
-            
-            exit(0)
-
-        self.mission_name = "MC_mission_box.plan"
-        mission_file = os.path.dirname(os.path.realpath(__file__)) + "/missions/" + self.mission_name
-            
-        rospy.loginfo("reading mission {0}".format(mission_file))
-        try:
-            wps = read_mission(mission_file)
-        except IOError:
-            exit(0)
-
-        # make sure the simulation is ready to start the mission
-        self.wait_for_topics(60)
+        self.set_mode("AUTO.LAND", 5)
         self.wait_for_landed_state(mavutil.mavlink.MAV_LANDED_STATE_ON_GROUND,
-                                   10, -1)
-        self.wait_for_mav_type(10)
+                                   90, 0)
+        self.set_arm(False, 5)
 
-        # push waypoints to FCU and start mission
-        self.send_wps(wps, 30)
-        self.log_topic_vars()
-        self.set_mode("AUTO.MISSION", 5)
+    def test_velocity(self):
+        # make sure the simulation is ready to start the mission
+
+        self.wait_for_topics(60)
+        self.wait_for_landed_state(mavutil.mavlink.MAV_LANDED_STATE_ON_GROUND, 10, -1)
+        #self.wait_for_mav_type(10)
+
+
+
+        vController = VelocityController()
+        vController.setTarget(target)
+        self.desired_velocity = vController.update(self.current_pose)
+
+        self.set_mode('OFFBOARD', 10)
         self.set_arm(True, 5)
 
-        rospy.loginfo("run mission {0}".format(self.mission_name))
-        for index, waypoint in enumerate(wps):
-            # only check position for waypoints where this makes sense
-            if (waypoint.frame == Waypoint.FRAME_GLOBAL_REL_ALT or
-                    waypoint.frame == Waypoint.FRAME_GLOBAL):
-                alt = waypoint.z_alt
-                if waypoint.frame == Waypoint.FRAME_GLOBAL_REL_ALT:
-                    alt += self.altitude.amsl - self.altitude.relative
-
-                self.reach_position(waypoint.x_lat, waypoint.y_long, alt, 60,
-                                    index)
+        while not rospy.is_shutdown():
+            if self.isReadyToFly:
+                self.desired_velocity = vController.update(self.current_pose)
+                print(self.desired_velocity)
+                self.set_velocity_pub.publish(self.desired_velocity)
+            self.rate.sleep()
+        
 
 
-            # after reaching position, wait for landing detection if applicable
-            if (waypoint.command == mavutil.mavlink.MAV_CMD_NAV_VTOL_LAND or
-                    waypoint.command == mavutil.mavlink.MAV_CMD_NAV_LAND):
-                self.wait_for_landed_state(
-                    mavutil.mavlink.MAV_LANDED_STATE_ON_GROUND, 120, index)
-
-        self.set_arm(False, 5)
-        self.clear_wps(5)
-
+target = Pose()
+target.position.x = 9
+target.position.y = 2
+target.position.z = 3
 
 if __name__ == '__main__':
     try:
         move = Movement()
-        move.test_mission()
+        
+        #move.test_velocity()
+        move.test_attctl()
+
+        #rospy.spin()
     except rospy.ROSInterruptException:
-        print("something happened .... asdfasdfasdfasdfasdf")
         exit(0)
     except KeyboardInterrupt:
         exit(0)
