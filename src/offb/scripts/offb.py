@@ -363,6 +363,25 @@ class OffboardCommon():
         rospy.loginfo("state:\n{}".format(self.state))
         rospy.loginfo("========================")
 
+    # Utility functions
+    def distance_to_wp(self, lat, lon, alt):
+
+        R = 6371000  # metres
+        rlat1 = math.radians(lat)
+        rlat2 = math.radians(self.global_position.latitude)
+
+        rlat_d = math.radians(self.global_position.latitude - lat)
+        rlon_d = math.radians(self.global_position.longitude - lon)
+
+        a = (math.sin(rlat_d / 2) * math.sin(rlat_d / 2) + math.cos(rlat1) *
+                math.cos(rlat2) * math.sin(rlon_d / 2) * math.sin(rlon_d / 2))
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+        d = R * c
+        alt_d = abs(alt - self.altitude.amsl)
+
+        rospy.logdebug("d: {0}, alt_d: {1}".format(d, alt_d))
+        return d, alt_d
 
 
 
