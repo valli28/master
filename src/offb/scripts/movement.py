@@ -54,7 +54,7 @@ import math
 import os
 #from px4tools import ulog
 import sys
-from geometry_msgs.msg import Pose, PoseStamped, Point, Quaternion, TwistStamped, Vector3
+from geometry_msgs.msg import Pose, PoseStamped, Point, Quaternion, TwistStamped, Twist, Vector3
 from mavros import mavlink
 from mavros_msgs.msg import State, ExtendedState, Mavlink, WaypointReached, AttitudeTarget, PositionTarget, GlobalPositionTarget
 from mavros_msgs.srv import CommandBool, SetMode
@@ -66,8 +66,7 @@ from six.moves import xrange
 from std_msgs.msg import Header
 import numpy as np
 
-from velocity_controller import VelocityController
-
+from velocity_controller import VelocityController, VelocityGuidance
 
 
 class Movement(OffboardCommon):
@@ -79,41 +78,22 @@ class Movement(OffboardCommon):
         super().__init__()
         rospy.init_node('offb')
 
-        #self.rate = rospy.Rate(10)
-
-        self.mission_item_reached = -1  # first mission item is 0
-        self.mission_name = ""
-
-        # Pubs
-        self.mavlink_pub = rospy.Publisher('mavlink/to', Mavlink, queue_size=1)
-
-        # Subs
-        #self.velocity_sub = rospy.Subscriber('/mavros/local_position/velocity', TwistStamped, callback=self.velocity_callback)
-        self.state_sub = rospy.Subscriber('/mavros/state', State, callback=self.state_callback)
-
-
-        # Services
-        self.arming_srv = rospy.ServiceProxy("/mavros/cmd/arming", CommandBool)
-        self.mode_srv = rospy.ServiceProxy("/mavros/set_mode", SetMode)
-
-
-        # ATTITUDE STUFF
-        #self.att = AttitudeTarget()
-
-        #self.att_setpoint_pub = rospy.Publisher('mavros/setpoint_raw/attitude', AttitudeTarget, queue_size=1)
-
-        # send setpoints in seperate thread to better prevent failsafe
-        #self.att_thread = Thread(target=self.send_att, args=())
-        #self.att_thread.daemon = True
-        #self.att_thread.start()
-
-
         # Velocity stuff
-        self.target = PoseStamped()
-        self.radius = 0.2
-
-        self.set_velocity_pub = rospy.Publisher('mavros/setpoint_position/local', PoseStamped, queue_size=1) # Queue_size is 10 as the example from Intel's Aero-drone's sample app
+        self.target = Twist()
+        self.target.linear.x = 0
+        self.target.linear.y = 0
+        self.target.linear.z = 0
+        self.target.angular.x = 0
+        self.target.angular.y = 0
+        self.target.angular.z = 0
         
+
+        self.radius = 0.5 # Radius of goal-reached
+
+        self.set_velocity_pub = rospy.Publisher('mavros/setpoint_velocity/cmd_vel_unstamped', Twist, queue_size=1) # Queue_size is 10 as the example from Intel's Aero-drone's sample app
+        
+        #self.vel_controller = VelocityController()
+        self.vel_controller = VelocityGuidance(request_velocity=1)
 
         # send setpoints in seperate thread to better prevent failsafe
         self.ctrl_thread = Thread(target=self.send_thread, args=())
@@ -123,140 +103,78 @@ class Movement(OffboardCommon):
 
 
     def send_thread(self):
-        rate = rospy.Rate(10)  # Hz
-        
-        self.target.header = Header()
-        self.target.header.frame_id = "base_footprint"
+        rate = rospy.Rate(50)  # Hz
 
         while not rospy.is_shutdown():
-            self.target.header.stamp = rospy.Time.now()
             self.set_velocity_pub.publish(self.target)
             try:  # prevent garbage in console output when thread is killed
                 rate.sleep()
             except rospy.ROSInterruptException:
                 pass
 
-    def is_at_position(self, x, y, z, offset):
-        """offset: meters"""
-        rospy.logdebug(
-            "current position | x:{0:.2f}, y:{1:.2f}, z:{2:.2f}".format(
-                self.local_position.pose.position.x, self.local_position.pose.
-                position.y, self.local_position.pose.position.z))
-
-        desired = np.array((x, y, z))
-        pos = np.array((self.local_position.pose.position.x,
-                        self.local_position.pose.position.y,
-                        self.local_position.pose.position.z))
-        return np.linalg.norm(desired - pos) < offset
-
-    def reach_position(self, x, y, z, timeout):
-        """timeout(int): seconds"""
-        # set a position setpoint
-        self.target.pose.position.x = x
-        self.target.pose.position.y = y
-        self.target.pose.position.z = z
-        rospy.loginfo(
-            "attempting to reach position | x: {0}, y: {1}, z: {2} | current position x: {3:.2f}, y: {4:.2f}, z: {5:.2f}".
-            format(x, y, z, self.local_position.pose.position.x,
-                   self.local_position.pose.position.y,
-                   self.local_position.pose.position.z))
-
-        # For demo purposes we will lock yaw/heading to north.
-        yaw_degrees = 0  # North
-        yaw = math.radians(yaw_degrees)
-        #quaternion = quaternion_from_euler(0, 0, yaw) TODO: Find some other or port this example of conversion to py3
-        self.target.pose.orientation = Quaternion(0,0,0,1)
-
-        # does it reach the position in 'timeout' seconds?
-        loop_freq = 2  # Hz
-        rate = rospy.Rate(loop_freq)
-        reached = False
-        for i in xrange(timeout * loop_freq):
-            if self.is_at_position(self.target.pose.position.x,
-                                   self.target.pose.position.y,
-                                   self.target.pose.position.z, self.radius):
-                rospy.loginfo("position reached | seconds: {0} of {1}".format(
-                    i / loop_freq, timeout))
-                reached = True
-                break
-
-            try:
-                rate.sleep()
-            except rospy.ROSException as e:
-                exit(0)
-
-
-    # Test method
-    #
-    def test_velctl(self):
-        """Test offboard Position control"""
-
-
-        # make sure the simulation is ready to start the mission
-        self.wait_for_topics(60)
-        for i in range(0, 20):
-            self.set_velocity_pub.publish(self.target)
-        self.wait_for_landed_state(mavutil.mavlink.MAV_LANDED_STATE_ON_GROUND, 10, -1)
-
-        self.log_topic_vars()
-        self.set_mode("OFFBOARD", 5)
-        self.set_arm(True, 5)
-
-        rospy.loginfo("run mission")
-
-        simulation_done = False
-        rate = rospy.Rate(2)
-        if (self.local_position.pose.position.x > 200):
-            rospy.loginfo("We have escaped.")
-            simulation_done = True
-
-        try:
-            rate.sleep()
-        except rospy.ROSException:
-            rospy.loginfo("Something bad happened")
-            exit(0)
-
-        if simulation_done:
-            self.set_mode("AUTO.LAND", 5)
-            self.wait_for_landed_state(mavutil.mavlink.MAV_LANDED_STATE_ON_GROUND, 90, 0)
-            self.set_arm(False, 5)
-    
-    def test_posctl(self):
-        """Test offboard position control"""
-
-        # make sure the simulation is ready to start the mission
-        self.wait_for_topics(60)
-        self.wait_for_landed_state(mavutil.mavlink.MAV_LANDED_STATE_ON_GROUND,
-                                   10, -1)
-
-        self.log_topic_vars()
-        self.set_mode("OFFBOARD", 5)
-        self.set_arm(True, 5)
-
-        rospy.loginfo("run mission")
-        positions = ((0, 0, 0), (50, 50, 20), (50, -50, 20), (-50, -50, 20),
-                     (0, 0, 20))
-
-        for i in xrange(len(positions)):
-            self.reach_position(positions[i][0], positions[i][1],
-                                positions[i][2], 30)
-
-        self.set_mode("AUTO.LAND", 5)
-        self.wait_for_landed_state(mavutil.mavlink.MAV_LANDED_STATE_ON_GROUND,
-                                   45, 0)
-        self.set_arm(False, 5)
-
+    def go_to_position(self, x, y, z):
+        # Horizontal position controller
+        temp_target = Pose()
+        temp_target.position.x = x
+        temp_target.position.y = y
+        temp_target.position.z = z
         
 
+        self.vel_controller.set_target(temp_target)
+        #rospy.loginfo(self.local_position.pose.position.z)
 
+        #while not (z - self.radius) < self.local_position.pose.position.z < (z + self.radius):
+        self.target = self.vel_controller.update_point(self.local_position)
+
+
+    def take_off(self, takeoff_altitude):
+        string = "Ascending to loiter position of " + str(takeoff_altitude) + " m"
+        #rospy.loginfo(string)
+        self.go_to_position(self.home_position.position.x, self.home_position.position.y, takeoff_altitude)
+        #string = "Takeoff altitude of " + str(takeoff_altitude) + " m reached"
+        rospy.loginfo(string)
+
+
+        
 if __name__ == '__main__':
     try:
         move = Movement()
+        # make sure the simulation is ready to start the mission
+        move.wait_for_topics(60)
+        #for i in range(0, 20):
+        #    self.set_velocity_pub.publish(self.target)
+        move.wait_for_landed_state(mavutil.mavlink.MAV_LANDED_STATE_ON_GROUND, 10, -1)
 
-        #move.test_velctl()
-        move.test_posctl()
+        move.log_topic_vars()
+        move.set_mode("OFFBOARD", 5)
+        move.set_arm(True, 5)
 
-        #rospy.spin()
+        rospy.loginfo("run mission")
+
+        mission_done = False
+        rate = rospy.Rate(100)
+        while not rospy.is_shutdown():
+            
+            rospy.loginfo("Taking off")
+            move.take_off(takeoff_altitude = 2)
+            
+            
+            try:
+                rate.sleep()
+            except rospy.ROSException:
+                rospy.loginfo("Shutting down")
+                exit(0)
+
+            if mission_done:
+                rospy.loginfo("Simulation done. Exiting")
+                move.set_mode("AUTO.LAND", 5)
+                move.wait_for_landed_state(mavutil.mavlink.MAV_LANDED_STATE_ON_GROUND, 90, 0)
+                move.set_arm(False, 5)
+
+                break
+            
+
+
     except rospy.ROSInterruptException:
         exit(0)
     except KeyboardInterrupt:
