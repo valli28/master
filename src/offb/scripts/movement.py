@@ -87,6 +87,7 @@ class Movement(OffboardCommon):
         self.target.angular.y = 0
         self.target.angular.z = 0
         
+        self.pos_goal = Pose()
 
         self.radius = 0.5 # Radius of goal-reached
 
@@ -112,53 +113,95 @@ class Movement(OffboardCommon):
             except rospy.ROSInterruptException:
                 pass
 
-    def go_to_position(self, x, y, z):
+    def go_to_position(self, x, y, z, speed):
+        string = "Going to position " + str([x, y, z])
+        rospy.loginfo(string)
         # Horizontal position controller
-        temp_target = Pose()
-        temp_target.position.x = x
-        temp_target.position.y = y
-        temp_target.position.z = z
-        
+        self.pos_goal.position.x = x
+        self.pos_goal.position.y = y
+        self.pos_goal.position.z = z
 
-        self.vel_controller.set_target(temp_target)
+        self.vel_controller.set_target(self.pos_goal)
         #rospy.loginfo(self.local_position.pose.position.z)
 
-        #while not (z - self.radius) < self.local_position.pose.position.z < (z + self.radius):
-        self.target = self.vel_controller.update_point(self.local_position)
+        while not self.vel_controller.reached(self.radius) == True:
+            rospy.loginfo_throttle(0.5, "Going to position")
+            string = "Position = " + str([self.local_position.pose.position.x, self.local_position.pose.position.y, self.local_position.pose.position.z])
+            rospy.loginfo_throttle(1, string)
+            self.target = self.vel_controller.update_point(self.local_position, speed)
 
+    def follow_line(self, A, B, speed):
+        string = "Beginning to follow line from A" + str([A.x, A.y, A.z]) + " to B" + str([B.x, B.y, B.z])
+        rospy.loginfo(string)
+        self.vel_controller.set_line(A, B)
+
+        self.pos_goal.position = B
+        
+        while not self.vel_controller.reached(self.radius) == True:
+            rospy.loginfo_throttle(0.5, "Following line")
+            string = "Position = " + str([self.local_position.pose.position.x, self.local_position.pose.position.y, self.local_position.pose.position.z])
+            rospy.loginfo_throttle(1, string)
+            self.target = self.vel_controller.update_line(self.local_position, speed)
+
+
+    def loiter(self, rate, duration=2):
+        string = "Beginning to loiter for " + str(duration) + " seconds"
+        rospy.loginfo(string)
+        rospy.loginfo(duration * int(1 / rate.sleep_dur.to_sec()))
+
+        self.vel_controller.set_target(self.pos_goal)
+
+        for i in xrange(duration * int(1 / rate.sleep_dur.to_sec())):
+            rospy.loginfo_throttle(0.5, "Loitering...")
+            #self.go_to_position(self.pos_goal.position.x, self.pos_goal.position.y, self.pos_goal.position.z, speed=0.2)
+            self.target = self.vel_controller.update_point(self.local_position, request_velocity=0.5)
+
+            string = "Position = " + str([self.local_position.pose.position.x, self.local_position.pose.position.y, self.local_position.pose.position.z])
+            rospy.loginfo_throttle(1, string)
+
+            try:
+                rate.sleep()
+            except rospy.ROSException:
+                exit(0)
+            
 
     def take_off(self, takeoff_altitude):
+        rospy.loginfo("Taking off")
         string = "Ascending to loiter position of " + str(takeoff_altitude) + " m"
-        #rospy.loginfo(string)
-        self.go_to_position(self.home_position.position.x, self.home_position.position.y, takeoff_altitude)
-        #string = "Takeoff altitude of " + str(takeoff_altitude) + " m reached"
+        rospy.loginfo(string)
+        self.go_to_position(self.home_position.position.x, self.home_position.position.y, takeoff_altitude, speed=1.0)
+        string = "Takeoff altitude of " + str(takeoff_altitude) + " m reached"
         rospy.loginfo(string)
 
 
-        
 if __name__ == '__main__':
     try:
         move = Movement()
         # make sure the simulation is ready to start the mission
         move.wait_for_topics(60)
-        #for i in range(0, 20):
-        #    self.set_velocity_pub.publish(self.target)
         move.wait_for_landed_state(mavutil.mavlink.MAV_LANDED_STATE_ON_GROUND, 10, -1)
 
         move.log_topic_vars()
+
         move.set_mode("OFFBOARD", 5)
         move.set_arm(True, 5)
 
-        rospy.loginfo("run mission")
+        rospy.loginfo("Run mission")
 
         mission_done = False
         rate = rospy.Rate(100)
         while not rospy.is_shutdown():
-            
-            rospy.loginfo("Taking off")
+                        
             move.take_off(takeoff_altitude = 2)
+            move.loiter(rate, duration=2)
+
+            move.go_to_position(10, 10, 10, speed=3)
+            move.loiter(rate, duration=3)
             
-            
+            move.follow_line(Point(10, 10, 10), Point(10, 20, 10), speed=2)
+            move.loiter(rate, duration=10)
+
+            mission_done = True
             try:
                 rate.sleep()
             except rospy.ROSException:

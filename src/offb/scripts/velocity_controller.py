@@ -20,34 +20,74 @@ class VelocityGuidance:
         self.request_velocity = request_velocity
 
 
-        self.state = np.array([])
-
-        self.target = np.array([])
+        self.state = np.array([0, 0, 0])
+        self.target = np.array([]) # State and target cannot be initialized to the same thing, or else the reached() check returns true prematurely
 
         self.Yaw = PID(Kp=1.75, Kd=6, maxOut=0.5)
 
 
         self.lastTime = rospy.get_time()
         self.altitude_controller = PID(Kp=2.5, Kd=7.5, maxOut=self.request_velocity)
+        self.x_controller = PID(Kp=2.5, Kd=7.5, maxOut=self.request_velocity)
+        self.y_controller = PID(Kp=2.5, Kd=7.5, maxOut=self.request_velocity)
 
-    def update_line(self, current_state):
+        self.line_controller_x = PID(Kp=1.5, Kd=5.0, maxOut=0.25)
+        self.line_controller_y = PID(Kp=1.5, Kd=5.0, maxOut=0.25)
+        self.line_controller_z = PID(Kp=1.5, Kd=5.0, maxOut=0.25)
+
+    def update_line(self, current_state, request_velocity):
         self.state = np.array([current_state.pose.position.x, current_state.pose.position.y, current_state.pose.position.z])
-        
+        self.x_controller.maxOut = request_velocity
+        self.y_controller.maxOut = request_velocity
+        self.altitude_controller.maxOut = request_velocity
         #vector_between_A_and_B = self.point_B - self.point_B
 
-        closest_point, distance = self.closest_point_on_vector(self.point_A[0], self.point_A[1], self.point_A[2], self.point_B[0], self.point_B[1], self.point_B[2], self.state[0], self.state[1], self.state[2])
+        closest_point, distances, actual_distance = self.closest_point_on_vector(self.point_A[0], self.point_A[1], self.point_A[2], self.point_B[0], self.point_B[1], self.point_B[2], self.state[0], self.state[1], self.state[2])
         # Output vector is now just the distance between the current position and the closest position to the vector.
-        output_vector = closest_point - self.state
+        #output_vector = closest_point - self.state
+        #output_vector = distances # Maybe this is correct... I'm not sure
+        output_vector = np.array([0, 0, 0])
         # We have to "scale it" 
 
-        # Pushing it towards the goal, point_B
-        output_vector += (self.target - self.state)
+        '''
+        # We have to create some "Target" for the PID controller as the target B and the direction of the unit vector do not match very well.
+        # What we are going to do is push the drone towards the target B as much as we can allow it to depending on how close we are to the line.
+        # We are going to represent "closeness" as the remainder of 1 minus the vector (not unit vector) from the drone to the line, if it is under 1 at all.
+        # We are going to use that remainder as how much we can push the drone towards the goal B. Ideally, when the drone is on the line perfectly, it is flying in a unit direction towards the goal.
+        # If it's more than one meter away from the line in any direction, all it tries to do is get back to it, and does not focus on actually getting to the goal B.
+        remainder_vector = np.array([0, 0, 0])
+        if actual_distance < 1.0:
+            remainder = 1.0 - actual_distance
+            remainder_vector = self.vector_AB_unit * remainder
+            # Now that the output_vector is not a unit vector but a small vector pointing on the line, we add the remainder-contribution.
+            output_vector += remainder_vector
+            # This is still not necessarily a unit vector, so we make it one.
+            output_vector = output_vector / (output_vector[0]**2 + output_vector[1]**2 + output_vector[2]**2)**.5
 
-        # Normalizing the output vector
-        output_vector = output_vector / distance
+        else :
+            # Normalizing the output vector
+            output_vector = output_vector / actual_distance
+        '''
 
-        # Multiplying it with the requested speed
-        output_vector *= self.request_velocity
+        # When the distance is closer than 1 meter to the line, the unit vector towards the line actually "goes through" the line. So what we do is skip the normalization when that is the case, and instead use vector addition
+        time = rospy.get_time()
+        x_line_factor = self.line_controller_x.update(closest_point[0], self.state[0], time)
+        y_line_factor = self.line_controller_x.update(closest_point[1], self.state[1], time)
+        z_line_factor = self.line_controller_x.update(closest_point[2], self.state[2], time)
+
+        time = rospy.get_time()
+        x_factor = self.x_controller.update(self.target[0], self.state[0], time)
+        y_factor = self.y_controller.update(self.target[1], self.state[1], time)
+        altitude_factor = self.altitude_controller.update(self.target[2], self.state[2], time)
+        
+        # Multiplying each controller factor on the vector component it corresponds to...
+        output_vector[0] = x_factor + x_line_factor
+        output_vector[1] = y_factor + y_line_factor
+        output_vector[2] = altitude_factor + z_line_factor
+
+        # normalize or not?
+        #output_vector = output_vector / (output_vector[0]**2 + output_vector[1]**2 + output_vector[2]**2)**.5
+
         
         output = Twist()
         output.linear.x = output_vector[0]
@@ -58,8 +98,11 @@ class VelocityGuidance:
 
         return output
     
-    def update_point(self, current_state):
+    def update_point(self, current_state, request_velocity):
         self.state = np.array([current_state.pose.position.x, current_state.pose.position.y, current_state.pose.position.z])
+        self.x_controller.maxOut = request_velocity
+        self.y_controller.maxOut = request_velocity
+        self.altitude_controller.maxOut = request_velocity
 
         # Drawing a vector from our current position to a target position
         output_vector = self.target - self.state
@@ -68,19 +111,23 @@ class VelocityGuidance:
         output_vector = output_vector / (output_vector[0]**2 + output_vector[1]**2 + output_vector[2]**2)**.5
 
         time = rospy.get_time()
-        # Let's fake the error and make it scalar of the distance between here and there
+
+        x_factor = self.x_controller.update(self.target[0], self.state[0], time)
+        y_factor = self.y_controller.update(self.target[1], self.state[1], time)
+        altitude_factor = self.altitude_controller.update(self.target[2], self.state[2], time)
         
-        altitude_factor = self.altitude_controller.update(self.target[2], self.state[2], time) #TODO: Make all the controllers individual.
-        # Scaling it down to the current request speed
-        output_vector *= altitude_factor
+        # Multiplying each controller factor on the vector component it corresponds to...
+        output_vector[0] *= x_factor
+        output_vector[1] *= y_factor
+        output_vector[2] *= altitude_factor
 
-        #rospy.loginfo(str(output_vector[2]))
-
+        # Creating the output Twist message
         output = Twist()
-        output.linear.x = 0#output_vector[0]
-        output.linear.y = 0#output_vector[1]
+        output.linear.x = output_vector[0]
+        output.linear.y = output_vector[1]
         output.linear.z = output_vector[2]
 
+        # TODO: Yaw controller
         output.angular.z = 0
 
         return output
@@ -92,7 +139,17 @@ class VelocityGuidance:
     def set_line(self, A, B):
         self.point_A = np.array([A.x, A.y, A.z])
         self.point_B = np.array([B.x, B.y, B.z])
+        self.vector_AB = self.point_B - self.point_A
+        self.vector_AB_unit = self.vector_AB / (self.vector_AB[0]**2 + self.vector_AB[1]**2 + self.vector_AB[2]**2)**.5
+        self.target = np.array([B.x, B.y, B.z])
 
+    def reached(self, radius):
+        if ((self.target[2] - radius) < self.state[2] < (self.target[2] + radius) 
+            and (self.target[1] - radius) < self.state[1] < (self.target[1] + radius) 
+            and (self.target[0] - radius) < self.state[0] < (self.target[0] + radius)):
+            return True
+        else:
+            return False
 
     def closest_point_on_vector(self, x1, y1, z1, x2, y2, z2, x3, y3, z3): # x3,y3,z3 is the point
         px = x2-x1
@@ -116,15 +173,9 @@ class VelocityGuidance:
         dy = y - y3
         dz = z - z3
 
-        # Note: If the actual distance does not matter,
-        # if you only want to compare what this function
-        # returns to other results of this function, you
-        # can just return the squared distance instead
-        # (i.e. remove the sqrt) to gain a little performance
-
         dist = (dx*dx + dy*dy + dz*dz)**.5
 
-        return Point(x, y, z), dist
+        return np.array([x, y, z]), np.array([dx, dy, dz]), dist
 
 
 
