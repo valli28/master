@@ -14,3 +14,4 @@ Firmware/
 .rosinstall
 .rosinstall.bak
 .vscode/
+*.h5
