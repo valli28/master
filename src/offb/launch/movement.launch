@@ -3,4 +3,5 @@
     <include file="$(find px4)/launch/mavros_posix_sitl.launch"/>
 
     <node name="offb" pkg="offb" type="movement.py" output="screen"/>
+    <node name="RoutePlanner" pkg="RoutePlanner" type="facade_planner.py" output="screen"/>
 </launch>

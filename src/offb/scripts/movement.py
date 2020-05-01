@@ -45,8 +45,6 @@
 
 from __future__ import division
 
-PKG = 'px4'
-
 import rospy
 
 
@@ -59,21 +57,19 @@ from mavros import mavlink
 from mavros_msgs.msg import State, ExtendedState, Mavlink, WaypointReached, AttitudeTarget, PositionTarget, GlobalPositionTarget
 from mavros_msgs.srv import CommandBool, SetMode
 from pymavlink import mavutil
-from offb import OffboardCommon
+from offboard import OffboardCommon
 from threading import Thread
 #from tf.transformations import quaternion_from_euler
 from six.moves import xrange
-from std_msgs.msg import Header
 import numpy as np
 
 from velocity_controller import VelocityController, VelocityGuidance
 
+from offb.msg import Bool, BuildingPolygonResult
+
+
 
 class Movement(OffboardCommon):
-    """
-    Run a mission
-    """
-
     def __init__(self):
         super().__init__()
         rospy.init_node('offb')
@@ -92,6 +88,8 @@ class Movement(OffboardCommon):
         self.radius = 0.5 # Radius of goal-reached
 
         self.set_velocity_pub = rospy.Publisher('mavros/setpoint_velocity/cmd_vel_unstamped', Twist, queue_size=1) # Queue_size is 10 as the example from Intel's Aero-drone's sample app
+
+        self.tell_planner_that_drone_is_ready_pub = rospy.Publisher('/gps_ready_from_offboard', Bool)
         
         #self.vel_controller = VelocityController()
         self.vel_controller = VelocityGuidance(request_velocity=1)
@@ -100,7 +98,6 @@ class Movement(OffboardCommon):
         self.ctrl_thread = Thread(target=self.send_thread, args=())
         self.ctrl_thread.daemon = True
         self.ctrl_thread.start()
-
 
 
     def send_thread(self):
@@ -125,9 +122,9 @@ class Movement(OffboardCommon):
         #rospy.loginfo(self.local_position.pose.position.z)
 
         while not self.vel_controller.reached(self.radius) == True:
-            rospy.loginfo_throttle(0.5, "Going to position")
-            string = "Position = " + str([self.local_position.pose.position.x, self.local_position.pose.position.y, self.local_position.pose.position.z])
-            rospy.loginfo_throttle(1, string)
+            #rospy.loginfo_throttle(0.5, "Going to position")
+            #string = "Position = " + str([self.local_position.pose.position.x, self.local_position.pose.position.y, self.local_position.pose.position.z])
+            #rospy.loginfo_throttle(1, string)
             self.target = self.vel_controller.update_point(self.local_position, speed)
 
     def follow_line(self, A, B, speed):
@@ -138,9 +135,9 @@ class Movement(OffboardCommon):
         self.pos_goal.position = B
         
         while not self.vel_controller.reached(self.radius) == True:
-            rospy.loginfo_throttle(0.5, "Following line")
-            string = "Position = " + str([self.local_position.pose.position.x, self.local_position.pose.position.y, self.local_position.pose.position.z])
-            rospy.loginfo_throttle(1, string)
+            #rospy.loginfo_throttle(0.5, "Following line")
+            #string = "Position = " + str([self.local_position.pose.position.x, self.local_position.pose.position.y, self.local_position.pose.position.z])
+            #rospy.loginfo_throttle(1, string)
             self.target = self.vel_controller.update_line(self.local_position, speed)
 
 
@@ -152,12 +149,11 @@ class Movement(OffboardCommon):
         self.vel_controller.set_target(self.pos_goal)
 
         for i in xrange(duration * int(1 / rate.sleep_dur.to_sec())):
-            rospy.loginfo_throttle(0.5, "Loitering...")
-            #self.go_to_position(self.pos_goal.position.x, self.pos_goal.position.y, self.pos_goal.position.z, speed=0.2)
+            rospy.loginfo_throttle(0.2, "Loitering...")
             self.target = self.vel_controller.update_point(self.local_position, request_velocity=0.5)
 
-            string = "Position = " + str([self.local_position.pose.position.x, self.local_position.pose.position.y, self.local_position.pose.position.z])
-            rospy.loginfo_throttle(1, string)
+            #string = "Position = " + str([self.local_position.pose.position.x, self.local_position.pose.position.y, self.local_position.pose.position.z])
+            #rospy.loginfo_throttle(1, string)
 
             try:
                 rate.sleep()
@@ -184,6 +180,22 @@ if __name__ == '__main__':
         move.log_topic_vars()
 
         move.set_mode("OFFBOARD", 5)
+
+
+        # Now that we are in offboard, we actually ready to go, but before we arm the drone, we want to perform some analysis first
+        # and that is to check for surrounding buildings, and we want to analyse the one that is closest to us. 
+        move.tell_planner_that_drone_is_ready_pub.publish(True)
+
+        # And now, in turn, we wait until the planner gives us something to work with.
+        poses = rospy.wait_for_message('/impression_poses_from_planner', Pose)
+
+
+
+
+
+
+
+
         move.set_arm(True, 5)
 
         rospy.loginfo("Run mission")
