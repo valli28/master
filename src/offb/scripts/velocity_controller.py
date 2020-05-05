@@ -11,7 +11,7 @@ from PID import PID
 
 
 class VelocityGuidance:
-    output = Twist()
+    #output = Twist()
 
     def __init__(self, request_velocity = 1.0):
         self.point_A = np.array([])
@@ -111,21 +111,29 @@ class VelocityGuidance:
         output_vector = output_vector / (output_vector[0]**2 + output_vector[1]**2 + output_vector[2]**2)**.5
 
         time = rospy.get_time()
-
+        
         x_factor = self.x_controller.update(self.target[0], self.state[0], time)
         y_factor = self.y_controller.update(self.target[1], self.state[1], time)
         altitude_factor = self.altitude_controller.update(self.target[2], self.state[2], time)
         
         # Multiplying each controller factor on the vector component it corresponds to...
-        output_vector[0] *= x_factor
-        output_vector[1] *= y_factor
-        output_vector[2] *= altitude_factor
+        output_vector[0] *= abs(x_factor)
+        output_vector[1] *= abs(y_factor)
+        output_vector[2] *= abs(altitude_factor)
+
+        #string = "x: " + str(output_vector[0]) + " y: " + str(output_vector[1]) + " z: " + str(output_vector[2])
+        #rospy.loginfo_throttle(0.5, string)
 
         # Creating the output Twist message
         output = Twist()
         output.linear.x = output_vector[0]
         output.linear.y = output_vector[1]
         output.linear.z = output_vector[2]
+
+        # Testing just raw PID instead
+        #output.linear.x = x_factor
+        #output.linear.y = y_factor
+        #output.linear.z = altitude_factor
 
         # TODO: Yaw controller
         output.angular.z = 0
@@ -134,6 +142,7 @@ class VelocityGuidance:
 
 
     def set_target(self, target):
+        self.target = np.array([])
         self.target = np.array([target.position.x, target.position.y, target.position.z])
 
     def set_line(self, A, B):
@@ -178,7 +187,7 @@ class VelocityGuidance:
         return np.array([x, y, z]), np.array([dx, dy, dz]), dist
 
 
-
+'''
 class VelocityController:
     target = PoseStamped()
     output = Twist()
@@ -225,3 +234,4 @@ class VelocityController:
 
 
         return output
+'''

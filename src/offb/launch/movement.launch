@@ -1,7 +1,11 @@
 <?xml version="1.0"?>
 <launch>
-    <include file="$(find px4)/launch/mavros_posix_sitl.launch"/>
+    <include file="$(find px4)/launch/mavros_posix_sitl.launch">
+        <arg name="vehicle" value="iris" />
+        <arg name="verbose" value="true" />
+    </include>
 
     <node name="offb" pkg="offb" type="movement.py" output="screen"/>
     <node name="RoutePlanner" pkg="RoutePlanner" type="facade_planner.py" output="screen"/>
+    <node name="house_cnn" pkg="house_cnn" type="house_ros.py" output="screen"/>
 </launch>

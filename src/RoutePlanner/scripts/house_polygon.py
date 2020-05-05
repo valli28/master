@@ -11,6 +11,8 @@ from haversine import haversine, Unit
 _AVG_EARTH_RADIUS_KM = 6371.0088
 _AVG_EARTH_RADIUS_M = _AVG_EARTH_RADIUS_KM * 1000
 
+
+
 class PolygonExtractor():
     def __init__(self, coordinates, radius):
 
@@ -106,7 +108,7 @@ class PolygonExtractor():
             for i in range(len(closest_way.nodes) - 1):
                 distances_between_nodes.append(haversine((closest_way.nodes[i].lat, closest_way.nodes[i].lon), (closest_way.nodes[i+1].lat, closest_way.nodes[i+1].lon), unit=Unit.METERS))
         except:
-            rospy.loginfo("There are no houses nearby.")
+            print("There are no houses nearby.")
         #print(distances_between_nodes)
 
         return closest_way, closest_node, distances_between_nodes

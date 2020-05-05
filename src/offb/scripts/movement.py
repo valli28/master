@@ -50,9 +50,9 @@ import rospy
 
 import math
 import os
-#from px4tools import ulog
+#from px4tools import ulogf
 import sys
-from geometry_msgs.msg import Pose, PoseStamped, Point, Quaternion, TwistStamped, Twist, Vector3
+from geometry_msgs.msg import Pose, PoseStamped, Point, Quaternion, TwistStamped, Twist, Vector3, PoseArray
 from mavros import mavlink
 from mavros_msgs.msg import State, ExtendedState, Mavlink, WaypointReached, AttitudeTarget, PositionTarget, GlobalPositionTarget
 from mavros_msgs.srv import CommandBool, SetMode
@@ -63,7 +63,7 @@ from threading import Thread
 from six.moves import xrange
 import numpy as np
 
-from velocity_controller import VelocityController, VelocityGuidance
+from velocity_controller import VelocityGuidance
 
 from offb.msg import Bool, BuildingPolygonResult
 
@@ -91,7 +91,7 @@ class Movement(OffboardCommon):
 
         self.tell_planner_that_drone_is_ready_pub = rospy.Publisher('/gps_ready_from_offboard', Bool)
         
-        #self.vel_controller = VelocityController()
+
         self.vel_controller = VelocityGuidance(request_velocity=1)
 
         # send setpoints in seperate thread to better prevent failsafe
@@ -105,6 +105,8 @@ class Movement(OffboardCommon):
 
         while not rospy.is_shutdown():
             self.set_velocity_pub.publish(self.target)
+            #string = "x: " + str(self.target.linear.x) + " y: " + str(self.target.linear.y) + " z: " + str(self.target.linear.z)
+            #rospy.loginfo_throttle(2, string)
             try:  # prevent garbage in console output when thread is killed
                 rate.sleep()
             except rospy.ROSInterruptException:
@@ -144,13 +146,12 @@ class Movement(OffboardCommon):
     def loiter(self, rate, duration=2):
         string = "Beginning to loiter for " + str(duration) + " seconds"
         rospy.loginfo(string)
-        rospy.loginfo(duration * int(1 / rate.sleep_dur.to_sec()))
 
         self.vel_controller.set_target(self.pos_goal)
 
         for i in xrange(duration * int(1 / rate.sleep_dur.to_sec())):
-            rospy.loginfo_throttle(0.2, "Loitering...")
-            self.target = self.vel_controller.update_point(self.local_position, request_velocity=0.5)
+            #rospy.loginfo_throttle(0.2, "Loitering...")
+            self.target = self.vel_controller.update_point(self.local_position, request_velocity=0.1)
 
             #string = "Position = " + str([self.local_position.pose.position.x, self.local_position.pose.position.y, self.local_position.pose.position.z])
             #rospy.loginfo_throttle(1, string)
@@ -187,13 +188,9 @@ if __name__ == '__main__':
         move.tell_planner_that_drone_is_ready_pub.publish(True)
 
         # And now, in turn, we wait until the planner gives us something to work with.
-        poses = rospy.wait_for_message('/impression_poses_from_planner', Pose)
-
-
-
-
-
-
+        poses = []
+        #poses = rospy.wait_for_message('/impression_poses_from_planner', PoseArray)
+        
 
 
         move.set_arm(True, 5)
@@ -203,15 +200,21 @@ if __name__ == '__main__':
         mission_done = False
         rate = rospy.Rate(100)
         while not rospy.is_shutdown():
-                        
             move.take_off(takeoff_altitude = 2)
             move.loiter(rate, duration=2)
-
-            move.go_to_position(10, 10, 10, speed=3)
-            move.loiter(rate, duration=3)
-            
-            move.follow_line(Point(10, 10, 10), Point(10, 20, 10), speed=2)
-            move.loiter(rate, duration=10)
+            if poses:
+                # Fly the impression poses
+                for i in range(len(poses.poses)):
+                    move.go_to_position(poses.poses[i].position.x, poses.poses[i].position.y, poses.poses[i].position.z, speed=2)
+                    move.loiter(rate, duration=3)
+                    
+            else:
+                # Just do something random
+                move.go_to_position(10, 10, 10, speed=3)
+                move.loiter(rate, duration=100)
+                
+                move.follow_line(Point(10, 10, 10), Point(10, 20, 10), speed=2)
+                move.loiter(rate, duration=10)
 
             mission_done = True
             try:

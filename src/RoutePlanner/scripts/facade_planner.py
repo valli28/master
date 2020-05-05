@@ -20,7 +20,7 @@ import rospy
 
 from offb.msg import Bool, BuildingPolygonResult
 from sensor_msgs.msg import NavSatFix, Image
-from geometry_msgs import Pose
+from geometry_msgs.msg import Pose, PoseArray
 
 
 # This class might actually be split up into two classe since it actually serves two different purposes that are being performed at different times.
@@ -41,8 +41,11 @@ class Planner():
         else:
             rospy.loginfo("Never got position confirmation from Offboard")
 
-        self.impression_keyframes_pub = rospy.Publisher('/impression_poses_from_planner', Pose) #ACTUALLY HAS TO BE A LIST OF POSES AND JUST JUST A POSE
+        self.house_result_pub = rospy.Publisher('/house_results_from_overpass_local', BuildingPolygonResult, queue_size=5) # Information about the house
 
+        self.impression_keyframes_pub = rospy.Publisher('/impression_poses_from_planner', PoseArray, queue_size=5) # Poses to take one image of each facade of the house
+
+        self.inspection_keyframes_pub = rospy.Publisher('/keyframes_poses_from_planner', PoseArray, queue_size=5)
         #coordinates = np.array([55.3729781, 10.4008157])
 
     def impression(self, drone_lat, drone_lon):
@@ -123,12 +126,44 @@ class Planner():
         # and remember that the nodes in the house variable and the distances are ordered correctly corresponding to the order which they are connected.
         rospy.loginfo("I'm in the generate impression poses function now")
 
-        # For now just return the distances. at least it's a list that has equally many objects as there will be keyframes
-        return distances
+        building = BuildingPolygonResult()
+        ''' BuildingPolygonResult.msg
+        bool found_building
+        string building_name
+        string building_type
+        float64[] distances
+        '''
+        building.found_building = True
+        building.building_name = "Unkown name of building"
+        building.building_type = "Building"
+        building.distances = distances
+
+        poses = PoseArray()
+        poses.header.stamp = rospy.Time.now()
+        poses.header.frame_id = "impression_poses"
+
+        poses_list = []
+        for i in range(len(distances)):
+            pose = Pose()
+
+            # Generate a position that is halfway between the two nodes, as well as a distance away form the facade (like a triangle)
+            pose.position.x = 5 + i*2
+            pose.position.y = 0 + i*2
+            pose.position.z = 5
+
+            pose.orientation.z = 0
+
+            poses_list.append(pose)
+
+        poses.poses = poses_list
+
+        return building, poses
 
     def generate_keyframes_for_inspection(self, segmented_image):
         # Something someting
         rospy.loginfo("I'm in the generate keyframes for inspection function now")
+        poses = PoseArray()
+        return poses
 
 
     def something(self):
@@ -152,9 +187,10 @@ if __name__ == '__main__':
         # For the final product, a google maps widget with the coordinates that we just fetched would confirm with the pilot that we are indeed at the correct site and building.
         # But for this proof of concept, we just run it.
 
-        impression_poses = planner.generate_impression_poses(closest_house, closest_node, distances_between_nodes)
+        building_info, impression_poses = planner.generate_impression_poses(closest_house, closest_node, distances_between_nodes)
         #Publish the poses to make the impressions.
         planner.impression_keyframes_pub.publish(impression_poses)
+        planner.house_result_pub.publish(building_info)
 
         # and now get all the impression images as they come and "map" them over to a tilemap with regions to avoid etc.
         #impression_image_from_camera = rospy.wait_for_message('impression_image_from_camera', Image) # THIS IS SUPPOSED TO BE IN THE SEGMENTATION NODE

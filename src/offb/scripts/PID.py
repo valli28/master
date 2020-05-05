@@ -45,10 +45,12 @@ class PID:
 
         output = self.Kp * p + self.Ki * i + self.Kd * d
         # Make sure output does not exceed maximum
+        
         if (self.maxOut is not None and output > self.maxOut):
             output = self.maxOut
         elif (self.maxOut is not None and output < -self.maxOut):
             output = -self.maxOut
+        
 
         return output
 
