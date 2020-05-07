@@ -1,8 +1,9 @@
 #!/bin/bash
 
 # tell the simulation where our start position is.
-export PX4_HOME_LAT=55.373068
-export PX4_HOME_LON=10.401635
+# Now that the world has been made, I can no longer change the world
+export PX4_HOME_LAT=55.373069
+export PX4_HOME_LON=10.401637
 export PX4_HOME_ALT=0.0
 
 px4_dir=$(pwd)/Firmware

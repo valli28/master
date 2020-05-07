@@ -47,21 +47,16 @@ from __future__ import division
 
 import rospy
 
-
-import math
-import os
 #from px4tools import ulogf
-import sys
-from geometry_msgs.msg import Pose, PoseStamped, Point, Quaternion, TwistStamped, Twist, Vector3, PoseArray
-from mavros import mavlink
-from mavros_msgs.msg import State, ExtendedState, Mavlink, WaypointReached, AttitudeTarget, PositionTarget, GlobalPositionTarget
-from mavros_msgs.srv import CommandBool, SetMode
+from geometry_msgs.msg import Pose, Point, Twist, PoseArray
+from sensor_msgs.msg import CompressedImage
 from pymavlink import mavutil
 from offboard import OffboardCommon
 from threading import Thread
 #from tf.transformations import quaternion_from_euler
 from six.moves import xrange
 import numpy as np
+import cv2 as cv2
 
 from velocity_controller import VelocityGuidance
 
@@ -90,25 +85,44 @@ class Movement(OffboardCommon):
         self.set_velocity_pub = rospy.Publisher('mavros/setpoint_velocity/cmd_vel_unstamped', Twist, queue_size=1) # Queue_size is 10 as the example from Intel's Aero-drone's sample app
 
         self.tell_planner_that_drone_is_ready_pub = rospy.Publisher('/gps_ready_from_offboard', Bool)
+
+        self.camera_sub = rospy.Subscriber('/cgo3_camera/image_raw/compressed', CompressedImage, self.camera_callback, queue_size=1)
         
 
         self.vel_controller = VelocityGuidance(request_velocity=1)
+        
+        self.ready = False
 
         # send setpoints in seperate thread to better prevent failsafe
         self.ctrl_thread = Thread(target=self.send_thread, args=())
         self.ctrl_thread.daemon = True
         self.ctrl_thread.start()
 
+    def camera_callback(self, ros_data):
+        '''Callback function for image from camera. Is supposedly a "ros image" that needs to be converted with OpenCV '''
+
+        if not self.ready:
+            return None
+
+
+        np_arr = np.fromstring(ros_data.data, np.uint8)
+        image_np = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+
+        #cv2.imshow('cv_img', image_np)
+        #cv2.waitKey(2)
+
+        # Save image in this class...
+        self.image = image_np
 
     def send_thread(self):
-        rate = rospy.Rate(50)  # Hz
+        thread_rate = rospy.Rate(50)  # Hz
 
         while not rospy.is_shutdown():
             self.set_velocity_pub.publish(self.target)
             #string = "x: " + str(self.target.linear.x) + " y: " + str(self.target.linear.y) + " z: " + str(self.target.linear.z)
             #rospy.loginfo_throttle(2, string)
             try:  # prevent garbage in console output when thread is killed
-                rate.sleep()
+                thread_rate.sleep()
             except rospy.ROSInterruptException:
                 pass
 
@@ -161,6 +175,20 @@ class Movement(OffboardCommon):
             except rospy.ROSException:
                 exit(0)
             
+    def loiter_and_pic(self, rate):
+        '''
+        Starts to loiter and when we've loitered a bit, we take an image. When the image has been taken, we can continue
+        '''
+        self.loiter(rate, duration=3)
+        # The loiter function does nothing but just loiter. Maybe we should start a stand-alone thread that actually takes the image...
+
+        # Take a picture
+        image = self.image
+
+        # Lets just try to see if we can take pic after loitering, and then go straight back to loitering.
+        self.loiter(rate, duration=1)
+
+        return image
 
     def take_off(self, takeoff_altitude):
         rospy.loginfo("Taking off")
@@ -186,13 +214,11 @@ if __name__ == '__main__':
         # Now that we are in offboard, we actually ready to go, but before we arm the drone, we want to perform some analysis first
         # and that is to check for surrounding buildings, and we want to analyse the one that is closest to us. 
         move.tell_planner_that_drone_is_ready_pub.publish(True)
-
+        move.ready = True
         # And now, in turn, we wait until the planner gives us something to work with.
         poses = []
         #poses = rospy.wait_for_message('/impression_poses_from_planner', PoseArray)
         
-
-
         move.set_arm(True, 5)
 
         rospy.loginfo("Run mission")
@@ -211,8 +237,16 @@ if __name__ == '__main__':
             else:
                 # Just do something random
                 move.go_to_position(10, 10, 10, speed=3)
-                move.loiter(rate, duration=100)
-                
+                image = move.loiter_and_pic(rate)
+                #cv2.imshow('Captured image 1', image)
+                #cv2.waitKey(0)
+                #move.loiter(rate, duration=300)
+
+                move.go_to_position(-10, -10, 10, speed=3)
+                image = move.loiter_and_pic(rate)
+                #cv2.imshow('Captured image 2', image) #Imshow only works with waitKey, but since the program doesnt' run without me pressing 0 manually, I rest assured that the image exist :)
+                #cv2.waitKey(0)
+
                 move.follow_line(Point(10, 10, 10), Point(10, 20, 10), speed=2)
                 move.loiter(rate, duration=10)
 

@@ -5,11 +5,12 @@ import random
 import skimage.io
 
 # Root directory of the project
-ROOT_DIR = os.path.abspath("./")
-PARENT_DIR = os.path.abspath(os.path.join(ROOT_DIR, os.pardir))
+CURR_DIR = os.path.dirname(os.path.realpath(__file__)) # os.path.abspath("./")
+PARENT_DIR = os.path.abspath(os.path.join(CURR_DIR, os.pardir))
 INCLUDE_DIR = os.path.join(PARENT_DIR, "include")
 LIB_DIR = os.path.join(INCLUDE_DIR, "model")
 # Import Mask RCNN
+
 sys.path.append(LIB_DIR)  # To find local version of the library
 import mrcnn.model as modellib
 from mrcnn import visualize

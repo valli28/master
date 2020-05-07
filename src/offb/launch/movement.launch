@@ -3,6 +3,7 @@
     <include file="$(find px4)/launch/mavros_posix_sitl.launch">
         <arg name="vehicle" value="iris" />
         <arg name="verbose" value="true" />
+        <arg name="world" default="$(find mavlink_sitl_gazebo)/worlds/hinderup.world"/>
     </include>
 
     <node name="offb" pkg="offb" type="movement.py" output="screen"/>

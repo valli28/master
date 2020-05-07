@@ -6,6 +6,7 @@ import numpy as np
 import math
 import overpy
 from haversine import haversine, Unit
+import utm
 
 # mean earth radius - https://en.wikipedia.org/wiki/Earth_radius#Mean_radius
 _AVG_EARTH_RADIUS_KM = 6371.0088
@@ -75,8 +76,22 @@ class PolygonExtractor():
                 print("Name: %s" % way.tags.get("name", "n/a"))
                 print("  Building: %s" % way.tags.get("building", "n/a"))
                 print("  Nodes: " + str(len(way.nodes)))
-                #for node in way.nodes:
-                #    print("    Lat: %f, Lon: %f" % (node.lat, node.lon))
+                for node in way.nodes:
+                    print("    Lat: %f, Lon: %f" % (node.lat, node.lon))
+                print("    And my position is currently Lat: %f, Lon: %f" % (self.location[0], self.location[1]))
+
+                print("Which in local coordinates, with my position as the origin, that corresponds to:")
+                x, y, number, letter = utm.from_latlon(self.location[0], self.location[1])
+                for node in way.nodes:
+                    pointlat = node.lat
+                    pointlon = node.lon
+                    pointx, pointy, number, letter = utm.from_latlon(float(pointlat), float(pointlon))
+                    difx = x - pointx
+                    dify = y - pointy
+                    
+                    print("  x: %f, y: %f" % (difx, dify))
+                
+
             return result
                 
 
