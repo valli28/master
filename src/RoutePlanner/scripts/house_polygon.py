@@ -70,27 +70,7 @@ class PolygonExtractor():
                 way({xx1},{yy1},{xx2},{yy2}) ["building"];
                 (._;>;);
                 out body;
-                """)
-
-            for way in result.ways:
-                print("Name: %s" % way.tags.get("name", "n/a"))
-                print("  Building: %s" % way.tags.get("building", "n/a"))
-                print("  Nodes: " + str(len(way.nodes)))
-                for node in way.nodes:
-                    print("    Lat: %f, Lon: %f" % (node.lat, node.lon))
-                print("    And my position is currently Lat: %f, Lon: %f" % (self.location[0], self.location[1]))
-
-                print("Which in local coordinates, with my position as the origin, that corresponds to:")
-                x, y, number, letter = utm.from_latlon(self.location[0], self.location[1])
-                for node in way.nodes:
-                    pointlat = node.lat
-                    pointlon = node.lon
-                    pointx, pointy, number, letter = utm.from_latlon(float(pointlat), float(pointlon))
-                    difx = x - pointx
-                    dify = y - pointy
-                    
-                    print("  x: %f, y: %f" % (difx, dify))
-                
+                """)               
 
             return result
                 
@@ -105,28 +85,56 @@ class PolygonExtractor():
         distance = self.radius*10 # Just something that is way more than the radius of the current bounding box.
         for way in result.ways:
             for node in way.nodes:
+
                 compare_to_this_distance = haversine((self.location[0],self.location[1]),(node.lat,node.lon), unit=Unit.METERS)
                 if distance > compare_to_this_distance:
                     closest_node = node
                     closest_way = way
                     distance = compare_to_this_distance
         
-        return closest_way, closest_node
+
+        print("Name: %s" % closest_way.tags.get("name", "n/a"))
+        print("  Building: %s" % closest_way.tags.get("building", "n/a"))
+        print("  Approximate height %s" % closest_way.tags.get("building:height", "n/a"))
+        print("  Nodes: " + str(len(closest_way.nodes)))
+        for node in closest_way.nodes:
+            print("    Lat: %f, Lon: %f" % (node.lat, node.lon))
+            print("    And my position is currently Lat: %f, Lon: %f" % (self.location[0], self.location[1]))
+
+        print("Which in local coordinates, with my position as the origin, that corresponds to:")
+        x, y, number, letter = utm.from_latlon(self.location[0], self.location[1])
+        local_coords = []
+        for node in closest_way.nodes:
+            pointlat = node.lat
+            pointlon = node.lon
+            pointx, pointy, number, letter = utm.from_latlon(float(pointlat), float(pointlon))
+            difx = x - pointx
+            dify = y - pointy
+            
+            print("  x: %f, y: %f" % (difx, dify))
+            local_coords.append(np.array([difx, dify]))
+
+        return closest_way, closest_node, local_coords
 
     def get_closest_building(self):
 
         result = self.submit_query_to_overpass()
 
-        closest_way, closest_node = self.find_closest_way(result)
+        closest_way, closest_node, local_coords = self.find_closest_way(result)
         distances_between_nodes = []
+        building_height = []
         try:
             for i in range(len(closest_way.nodes) - 1):
                 distances_between_nodes.append(haversine((closest_way.nodes[i].lat, closest_way.nodes[i].lon), (closest_way.nodes[i+1].lat, closest_way.nodes[i+1].lon), unit=Unit.METERS))
+            
+            building_height = closest_way.tags.get("building:height", "n/a")
+            if not building_height:
+                building_height = 0
         except:
             print("There are no houses nearby.")
         #print(distances_between_nodes)
 
-        return closest_way, closest_node, distances_between_nodes
+        return closest_way, closest_node, distances_between_nodes, building_height, local_coords
 
     
 

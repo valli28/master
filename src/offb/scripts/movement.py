@@ -217,7 +217,9 @@ if __name__ == '__main__':
         move.ready = True
         # And now, in turn, we wait until the planner gives us something to work with.
         poses = []
-        #poses = rospy.wait_for_message('/impression_poses_from_planner', PoseArray)
+        poses = rospy.wait_for_message('/impression_poses_from_planner', PoseArray)
+
+        
         
         move.set_arm(True, 5)
 
@@ -228,7 +230,7 @@ if __name__ == '__main__':
         while not rospy.is_shutdown():
             move.take_off(takeoff_altitude = 2)
             move.loiter(rate, duration=2)
-            if poses:
+            if True:
                 # Fly the impression poses
                 for i in range(len(poses.poses)):
                     move.go_to_position(poses.poses[i].position.x, poses.poses[i].position.y, poses.poses[i].position.z, speed=2)

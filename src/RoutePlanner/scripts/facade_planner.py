@@ -22,6 +22,7 @@ from offb.msg import Bool, BuildingPolygonResult
 from sensor_msgs.msg import NavSatFix, Image
 from geometry_msgs.msg import Pose, PoseArray
 
+import math
 
 # This class might actually be split up into two classe since it actually serves two different purposes that are being performed at different times.
 class Planner():
@@ -122,7 +123,7 @@ class Planner():
     def button_callback(self, event):
         self.m.generate_mission(self.ax)
 
-    def generate_impression_poses(self, house, closest_node, distances):
+    def generate_impression_poses(self, house, closest_node, wall_lenghts, building_height, local_coords):
         # and remember that the nodes in the house variable and the distances are ordered correctly corresponding to the order which they are connected.
         rospy.loginfo("I'm in the generate impression poses function now")
 
@@ -134,25 +135,65 @@ class Planner():
         float64[] distances
         '''
         building.found_building = True
-        building.building_name = "Unkown name of building"
-        building.building_type = "Building"
-        building.distances = distances
+        building.building_name = house.tags.get("name", "n/a")
+        building.building_type = house.tags.get("building", "n/a")
+        building.distances = wall_lenghts
 
         poses = PoseArray()
         poses.header.stamp = rospy.Time.now()
         poses.header.frame_id = "impression_poses"
 
+        mission = Mission(80, 75)
+
         poses_list = []
-        for i in range(len(distances)):
+        for i in range(len(wall_lenghts)):
             pose = Pose()
+            distance_from_wall = mission.calculate_distance_from_wall(wall_lenghts[i])
 
+            # Now we have everything we need to generate the point at which the drone has to be to look at the wall.
+            # We take the coordinates of the endpoints of the walls
+            point_a = local_coords[i]
+            point_b = local_coords[i+1]
+
+            # TODO: How do we make sure that we don't make a point inside the building?
+            # It seems that the nodes are always defined clockwise, which means that if we draw the vector from a to b, the impression_point should be to the "left"
+            # if we are looking in the same direction as the a-b vector
+
+            vector_ab = point_b - point_a
+
+            # We half that vector since we are doing that kind of triangle-calculation
+            vector_ab *= 0.5
+
+            # We rotate this vector anti-clockwise (so by a positive rotation-angle theta)
+            # The angle is 180-fov divided by two
+            theta = (180 - mission.fov[0]) *0.5
+            theta = math.radians(theta)
+
+            # We use the rotation-matrix to rotate the vector 
+            vector_ac = np.array([math.cos(theta)* vector_ab[0] - math.sin(theta)*vector_ab[1], math.sin(theta)*vector_ab[0] + math.cos(theta)*vector_ab[1]])
+            
+            # This vector is sadly not the correct size since it is as long as vector_ab. 
+            # We have to enlarge it by multiplying it with a scalar corresponding to the ratio between the sides of the triangle and half the wall
+            # The length of the arms on the triangle is calculated by its baseline and height, which we know
+            a = 0.5*math.sqrt(wall_lenghts[i]**2 + 4*distance_from_wall**2)
+
+            # Now we have what is supposed to be how long the vector is. 
+            vector_ac *= a / (wall_lenghts[i]*0.5)
+
+            # If we add vector_ac to point a, we now have point c, which is the impression position.
+            impression_position_xy = point_a + vector_ac
             # Generate a position that is halfway between the two nodes, as well as a distance away form the facade (like a triangle)
-            pose.position.x = 5 + i*2
-            pose.position.y = 0 + i*2
-            pose.position.z = 5
-
-            pose.orientation.z = 0
-
+            pose.position.x = impression_position_xy[0]
+            pose.position.y = impression_position_xy[1]
+            pose.position.z = int(building_height) / 2 #TODO The height must be something based on the angle of the camera
+            
+            theta = math.radians(-90)
+            heading = np.array([math.cos(theta)* vector_ab[0] - math.sin(theta)*vector_ab[1], math.sin(theta)*vector_ab[0] + math.cos(theta)*vector_ab[1]])
+            heading = math.atan(heading[1]/heading[0])
+            pose.orientation.z = heading
+            
+            string = "Point " + str(i) + " xy: (" + str(pose.position.x) + ", " + str(pose.position.y) + str(")")
+            rospy.loginfo(string)
             poses_list.append(pose)
 
         poses.poses = poses_list
@@ -181,13 +222,13 @@ if __name__ == '__main__':
         # The init-function calls the "wait for message from offboard" which puts this node in a loop while it waits for a GPS coordinate of the drone (GPSFIX)
 
         polygon = PolygonExtractor(planner.coordinates, radius=20) # Radius is in meters
-        closest_house, closest_node, distances_between_nodes = polygon.get_closest_building()
+        closest_house, closest_node, distances_between_nodes, building_height, local_coords = polygon.get_closest_building()
         # Now that we have the collection of nodes, the closest node and the distance between all the nodes, let us run the planner accordingly.
 
         # For the final product, a google maps widget with the coordinates that we just fetched would confirm with the pilot that we are indeed at the correct site and building.
         # But for this proof of concept, we just run it.
 
-        building_info, impression_poses = planner.generate_impression_poses(closest_house, closest_node, distances_between_nodes)
+        building_info, impression_poses = planner.generate_impression_poses(closest_house, closest_node, distances_between_nodes, building_height, local_coords)
         #Publish the poses to make the impressions.
         planner.impression_keyframes_pub.publish(impression_poses)
         planner.house_result_pub.publish(building_info)

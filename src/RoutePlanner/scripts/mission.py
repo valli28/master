@@ -26,7 +26,7 @@ class Mission():
         self.GSD = 1.0 #cm per pixel. Less is better (higher ground-resolution)
         self.GSD *= 0.5 # Due to Nyquist's sampling theorem i guess..
 
-
+        ################################################################################
         # For the FLIR Duo Pro R (not the camera I used. It's discontinued and I couldn't find nor calculate the focal length anywhere...)
         # The FLIR Duo Pro R camera can be purchased in many different variations, both in terms of thermal resolution, FOV and refresh-rate.
         #Let's take the best resolution, no matter the refresh-rate and middle-range FOV.
@@ -41,6 +41,22 @@ class Mission():
 
         #sensor_size_diagonal = math.hypot(sensor_size[0], sensor_size[1])
         f = 25 # focal length in mm.
+        ################################################################################
+
+        ################################################################################
+        # For the CGO3 camera
+        # Initialize constant parameters such as camera, drone stuff etc.
+        sensor_resolution = np.array([3840, 2160])# pixels
+
+        self.aov = np.array([114.592, 114.592])  # degrees so they say that the AOV is 32 degrees
+        #diag_fov = math.hypot(lens[0], lens[1]) #calculating the hypotenuse
+
+        #pixel_pitch = 17.0 / 1000 # pixel pitch (distance between one pixel core to the next) is 17 micrometers
+        sensor_size = np.array([25.4, 25.4])
+
+        #sensor_size_diagonal = math.hypot(sensor_size[0], sensor_size[1])
+        f = 14 # focal length in mm.
+        ################################################################################
     
         self.h = np.round(min((f * sensor_resolution * self.GSD) * 1.0 / sensor_size) / 100.0, 2) # Divide by 100 to get meters from cm(GSD).
         print("With a minimum GSD of " + str(self.GSD) + "cm the UAV can fly at a maximum distance of " + str(self.h) + "m from the walls")
@@ -52,7 +68,10 @@ class Mission():
         print("... and it will by flying at a minimum altitude of " + str(self.altitude) + "m")
 
 
-
+    def calculate_distance_from_wall(self, wall_length):
+        # since we know about the parameters of the camera, and we don't care about how many pixels or how much GSD we want, we can just do a triangle calculation I guess...
+        h = (wall_length / 2.0) * math.tan((180 - self.aov[0]) / 2.0)
+        return h
               
 
     def check_for_reflection(self, sun, axes):
