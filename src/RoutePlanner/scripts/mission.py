@@ -70,7 +70,7 @@ class Mission():
 
     def calculate_distance_from_wall(self, wall_length):
         # since we know about the parameters of the camera, and we don't care about how many pixels or how much GSD we want, we can just do a triangle calculation I guess...
-        h = (wall_length / 2.0) * math.tan((180 - self.aov[0]) / 2.0)
+        h = abs((wall_length / 2.0) * math.tan((180 - self.aov[0])))
         return h
               
 
