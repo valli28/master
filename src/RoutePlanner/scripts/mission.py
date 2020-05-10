@@ -48,7 +48,7 @@ class Mission():
         # Initialize constant parameters such as camera, drone stuff etc.
         sensor_resolution = np.array([3840, 2160])# pixels
 
-        self.aov = np.array([114.592, 114.592])  # degrees so they say that the AOV is 32 degrees
+        self.aov = np.array([114.592, 114.592*(sensor_resolution[1]/sensor_resolution[0])])  # degrees so they say that the AOV is 32 degrees
         #diag_fov = math.hypot(lens[0], lens[1]) #calculating the hypotenuse
 
         #pixel_pitch = 17.0 / 1000 # pixel pitch (distance between one pixel core to the next) is 17 micrometers
