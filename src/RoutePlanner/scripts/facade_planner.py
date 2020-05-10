@@ -123,11 +123,6 @@ class Planner():
     def button_callback(self, event):
         self.m.generate_mission(self.ax)
 
-    def generate_impression_poses(self, house, closest_node, wall_lenghts, building_height, local_coords):
-        
-
-
-        return building, poses
 
     def generate_keyframes_for_inspection(self, segmented_image):
         # Something someting
@@ -151,7 +146,7 @@ if __name__ == '__main__':
         # The init-function calls the "wait for message from offboard" which puts this node in a loop while it waits for a GPS coordinate of the drone (GPSFIX)
         origin = np.array([55.396142, 10.388953]) # This is the same as PX4_HOME_ LAT and LON
         polygon = PolygonExtractor(planner.coordinates, origin, radius=20) # Radius is in meters
-        closest_house, closest_node, distances_between_nodes, building_height, local_coords = polygon.get_closest_building()
+        closest_house, closest_node, building_height, local_coords = polygon.get_closest_building()
         # Now that we have the collection of nodes, the closest node and the distance between all the nodes, let us run the planner accordingly.
 
         # For the final product, a google maps widget with the coordinates that we just fetched would confirm with the pilot that we are indeed at the correct site and building.

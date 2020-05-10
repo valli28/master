@@ -67,11 +67,6 @@ class Mission():
         self.altitude = (math.sin(self.camera_pitch) * self.h) / math.sin(90.0 - self.camera_pitch) # 
         print("... and it will by flying at a minimum altitude of " + str(self.altitude) + "m")
 
-
-    def calculate_distance_from_wall(self, wall_length):
-        # since we know about the parameters of the camera, and we don't care about how many pixels or how much GSD we want, we can just do a triangle calculation I guess...
-        h = abs((wall_length / 2.0) * math.tan((180 - self.aov[0])))
-        return h
               
 
     def check_for_reflection(self, sun, axes):

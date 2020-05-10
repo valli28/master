@@ -11,11 +11,11 @@ import utm
 from mission import Mission
 from offb.msg import Bool, BuildingPolygonResult
 from geometry_msgs.msg import Pose, PoseArray
+from shapely.geometry import Polygon, LinearRing
 
 # mean earth radius - https://en.wikipedia.org/wiki/Earth_radius#Mean_radius
 _AVG_EARTH_RADIUS_KM = 6371.0088
 _AVG_EARTH_RADIUS_M = _AVG_EARTH_RADIUS_KM * 1000
-
 
 
 class PolygonExtractor():
@@ -37,6 +37,7 @@ class PolygonExtractor():
 
         self.house_nodes_positions = []
         self.house_impression_positions = []
+        self.house_corner_positions = []
         self.house_impression_direction = []
         self.building_height = 2 # TODO: Take input from pilot
         self.wall_lengths = []
@@ -110,7 +111,7 @@ class PolygonExtractor():
             print("    Lat: %f, Lon: %f" % (node.lat, node.lon))
             print("    And my position is currently Lat: %f, Lon: %f" % (self.location[0], self.location[1]))
 
-        print("Which in local coordinates, with origin as the origin, that corresponds to:")
+        #print("Which in local coordinates, with origin as the origin, that corresponds to:")
         x, y, number, letter = utm.from_latlon(self.origin[0], self.origin[1])
         local_coords = []
         for node in closest_way.nodes:
@@ -120,10 +121,30 @@ class PolygonExtractor():
             difx = x - pointx
             dify = y - pointy
             
-            print("  x: %f, y: %f" % (difx, dify))
+            #print("  x: %f, y: %f" % (difx, dify))
             local_coords.append(np.array([-difx, -dify]))
 
+        # Simplify local coordinates so that we don't get multiple vertices on essentialy a single edge
+        shapely_polygon = LinearRing(local_coords)
+        simplified_polygon = shapely_polygon.simplify(0.8)
+        px, py = simplified_polygon.coords.xy
+        # Pack these simplified values into the local_coords
+        local_coords = []
+        for i in range(len(px)):
+            local_coords.append(np.array([px[i], py[i]]))
+
+        # And recalculate the distance between the existing nodes
+        self.wall_lengths = []
+        for i in range(len(local_coords) - 1):
+            dist = math.sqrt((local_coords[i][0] - local_coords[i+1][0])**2 + (local_coords[i][1] - local_coords[i+1][1])**2)
+            self.wall_lengths.append(dist)
+
+        # We use Shapely's parallel_offset function to create a list of positions that are offset from the walls by some constant
+        # These positions will make sure that the drone wont crash into the corners of the buildings
+        self.house_corner_positions = simplified_polygon.parallel_offset(5.0, 'left', join_style=2) # TODO: some distance that is actually intelligent
+
         self.house_nodes_positions = local_coords
+        
         return closest_way, closest_node, local_coords
 
     def get_closest_building(self):
@@ -131,11 +152,11 @@ class PolygonExtractor():
         result = self.submit_query_to_overpass()
 
         closest_way, closest_node, local_coords = self.find_closest_way(result)
-        distances_between_nodes = []
+        #distances_between_nodes = []
         building_height = []
         try:
-            for i in range(len(closest_way.nodes) - 1):
-                distances_between_nodes.append(haversine((closest_way.nodes[i].lat, closest_way.nodes[i].lon), (closest_way.nodes[i+1].lat, closest_way.nodes[i+1].lon), unit=Unit.METERS))
+            #for i in range(len(closest_way.nodes) - 1):
+                #distances_between_nodes.append(haversine((closest_way.nodes[i].lat, closest_way.nodes[i].lon), (closest_way.nodes[i+1].lat, closest_way.nodes[i+1].lon), unit=Unit.METERS))
             
             building_height = closest_way.tags.get("building:height", "n/a")
 
@@ -148,9 +169,10 @@ class PolygonExtractor():
             print("Building does not have a registered height. Going back to default of " + str(self.building_height) + "m")
 
         self.overpass_building = closest_way
-        self.wall_lengths = distances_between_nodes
+        #self.wall_lengths = distances_between_nodes
 
-        return closest_way, closest_node, distances_between_nodes, building_height, local_coords
+        return closest_way, closest_node, building_height, local_coords
+        
 
     def generate_impression_poses(self):
         # and remember that the nodes in the house variable and the distances are ordered correctly corresponding to the order which they are connected.
@@ -177,12 +199,25 @@ class PolygonExtractor():
         poses_list = []
         for i in range(len(self.wall_lengths)):
             pose = Pose()
-            distance_from_wall = mission.calculate_distance_from_wall(self.wall_lengths[i])
+            
+            # since we know about the parameters of the camera, and we don't care about how many pixels or how much GSD we want, we can just do a triangle calculation I guess...
+            # Lets get the horizontal distance first
+            h = abs((self.wall_lengths[i] / 2.0) * math.tan((180 - mission.aov[0])))
+            # And then the vertical
+            v = abs((self.building_height / 2.0) * math.tan((180 - mission.aov[1])))
+            # And compare which one of them is largest and return it
+            if h > v:
+                distance_from_wall = h
+            else:
+                print("Building is too high. Backing off a bit.")
+                distance_from_wall = v
 
             # Now we have everything we need to generate the point at which the drone has to be to look at the wall.
             # We take the coordinates of the endpoints of the walls
+
             point_a = self.house_nodes_positions[i]
             point_b = self.house_nodes_positions[i+1]
+            
 
             # TODO: How do we make sure that we don't make a point inside the building?
             # It seems that the nodes are always defined clockwise, which means that if we draw the vector from a to b, the impression_point should be to the "left"
@@ -193,27 +228,32 @@ class PolygonExtractor():
             # We half that vector since we are doing that kind of triangle-calculation
             vector_ab *= 0.5
 
+            # since that vector now points to the midpoint between a and b, we create a vector from that point to b and call it bh.
+            point_h = point_a + vector_ab
+
+            vector_bh = point_h + vector_ab
+
             # We rotate this vector anti-clockwise (so by a positive rotation-angle theta)
             # The angle is 180-fov divided by two
-            theta = (180 - mission.aov[0]) *0.5
+            theta = 90
             theta = math.radians(theta)
-
             # We use the rotation-matrix to rotate the vector 
-            vector_ac = np.array([math.cos(theta)* vector_ab[0] - math.sin(theta)*vector_ab[1], math.sin(theta)*vector_ab[0] + math.cos(theta)*vector_ab[1]])
+            vector_hc = np.array([math.cos(theta)* vector_ab[0] - math.sin(theta)*vector_ab[1], math.sin(theta)*vector_ab[0] + math.cos(theta)*vector_ab[1]])
             
             # This vector is sadly not the correct size since it is as long as vector_ab. 
             # We have to enlarge it by multiplying it with a scalar corresponding to the ratio between the sides of the triangle and half the wall
             # The length of the arms on the triangle is calculated by its baseline and height, which we know
-            a = math.sqrt((0.5 * self.wall_lengths[i])**2 + distance_from_wall**2)
+            #a = math.sqrt((0.5 * self.wall_lengths[i])**2 + distance_from_wall**2)
             #print(a)
             #print(distance_from_wall)
             #print(self.wall_lengths[i])
 
             # Now we have what is supposed to be how long the vector is. 
-            vector_ac *= a / (self.wall_lengths[i]*0.5)
+            #vector_ac *= a / (self.wall_lengths[i]*0.5)
 
             # If we add vector_ac to point a, we now have point c, which is the impression position.
-            impression_position_xy = point_a + vector_ac
+            #impression_position_xy = point_a + vector_ac
+            impression_position_xy = point_h + (vector_hc / np.linalg.norm(vector_hc)) * (distance_from_wall + 1.5) # Add 1.5m to the desired distance
             # Generate a position that is halfway between the two nodes, as well as a distance away form the facade (like a triangle)
             '''
             This is stupid... but I have to correct the launch offset in xy that I have set the drone to for all the positions that i post to the drone...
@@ -222,6 +262,8 @@ class PolygonExtractor():
                 These are the current values.
 
             '''
+
+            # TODO: Insert the corner positions into every other pose :) 
             pose.position.x = impression_position_xy[0] + 35
             pose.position.y = impression_position_xy[1] + 20
             pose.position.z = int(self.building_height) / 2 #TODO The height must be something based on the angle of the camera
@@ -269,15 +311,18 @@ class PolygonExtractor():
         #plt.scatter(xi, yi, marker='o', color='r')
         plt.quiver(xi, yi, u, v, color='r')
 
+        xxx, yyy = self.house_corner_positions.coords.xy
+        plt.scatter(xxx, yyy)
+
         plt.show()
 
 
 
-    
+spawn = np.array([55.396142, 10.388953])
+origin = np.array([55.396142, 10.388953])
+PE = PolygonExtractor(spawn, origin, 20) # Coordinates a meter away from building
+PE.get_closest_building()
 
-#PE = PolygonExtractor(np.array([55.3729875, 10.4008359]), 20) # Coordinates a meter away from building
+PE.generate_impression_poses()
 
-#PE.get_closest_building()
-#PE.generate_impression_poses()
-
-#PE.draw()
+PE.draw()
