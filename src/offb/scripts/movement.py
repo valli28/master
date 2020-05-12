@@ -104,7 +104,6 @@ class Movement(OffboardCommon):
         if not self.ready:
             return None
 
-
         np_arr = np.fromstring(ros_data.data, np.uint8)
         image_np = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
 
@@ -115,7 +114,7 @@ class Movement(OffboardCommon):
         self.image = image_np
 
     def send_thread(self):
-        thread_rate = rospy.Rate(50)  # Hz
+        thread_rate = rospy.Rate(20)  # Hz
 
         while not rospy.is_shutdown():
             self.set_velocity_pub.publish(self.target)
@@ -126,13 +125,14 @@ class Movement(OffboardCommon):
             except rospy.ROSInterruptException:
                 pass
 
-    def go_to_position(self, x, y, z, speed):
+    def go_to_position(self, x, y, z, yaw, speed, rate):
         string = "Going to position " + str([x, y, z])
         rospy.loginfo(string)
         # Horizontal position controller
         self.pos_goal.position.x = x
         self.pos_goal.position.y = y
         self.pos_goal.position.z = z
+        self.pos_goal.orientation.z = yaw
 
         self.vel_controller.set_target(self.pos_goal)
         #rospy.loginfo(self.local_position.pose.position.z)
@@ -141,9 +141,13 @@ class Movement(OffboardCommon):
             #rospy.loginfo_throttle(0.5, "Going to position")
             #string = "Position = " + str([self.local_position.pose.position.x, self.local_position.pose.position.y, self.local_position.pose.position.z])
             #rospy.loginfo_throttle(1, string)
+            try:
+                rate.sleep()
+            except rospy.ROSException:
+                exit(0)
             self.target = self.vel_controller.update_point(self.local_position, speed)
 
-    def follow_line(self, A, B, speed):
+    def follow_line(self, A, B, speed, rate):
         string = "Beginning to follow line from A" + str([A.x, A.y, A.z]) + " to B" + str([B.x, B.y, B.z])
         rospy.loginfo(string)
         self.vel_controller.set_line(A, B)
@@ -154,8 +158,11 @@ class Movement(OffboardCommon):
             #rospy.loginfo_throttle(0.5, "Following line")
             #string = "Position = " + str([self.local_position.pose.position.x, self.local_position.pose.position.y, self.local_position.pose.position.z])
             #rospy.loginfo_throttle(1, string)
+            try:
+                rate.sleep()
+            except rospy.ROSException:
+                exit(0)
             self.target = self.vel_controller.update_line(self.local_position, speed)
-
 
     def loiter(self, rate, duration=2):
         string = "Beginning to loiter for " + str(duration) + " seconds"
@@ -190,11 +197,11 @@ class Movement(OffboardCommon):
 
         return image
 
-    def take_off(self, takeoff_altitude):
+    def take_off(self, takeoff_altitude, rate):
         rospy.loginfo("Taking off")
         string = "Ascending to loiter position of " + str(takeoff_altitude) + " m"
         rospy.loginfo(string)
-        self.go_to_position(self.home_position.position.x, self.home_position.position.y, takeoff_altitude, speed=1.0)
+        self.go_to_position(self.home_position.position.x, self.home_position.position.y, takeoff_altitude, 0, speed=1.0, rate=rate)
         string = "Takeoff altitude of " + str(takeoff_altitude) + " m reached"
         rospy.loginfo(string)
 
@@ -210,7 +217,6 @@ if __name__ == '__main__':
 
         move.set_mode("OFFBOARD", 5)
 
-
         # Now that we are in offboard, we actually ready to go, but before we arm the drone, we want to perform some analysis first
         # and that is to check for surrounding buildings, and we want to analyse the one that is closest to us. 
         move.tell_planner_that_drone_is_ready_pub.publish(True)
@@ -218,33 +224,47 @@ if __name__ == '__main__':
         # And now, in turn, we wait until the planner gives us something to work with.
         poses = []
         poses = rospy.wait_for_message('/impression_poses_from_planner', PoseArray)
-
-        
         
         move.set_arm(True, 5)
 
         rospy.loginfo("Run mission")
 
         mission_done = False
-        rate = rospy.Rate(100)
+        rate = rospy.Rate(40)
         while not rospy.is_shutdown():
-            move.take_off(takeoff_altitude = 2)
+            move.take_off(takeoff_altitude = 2, rate=rate)
             move.loiter(rate, duration=2)
+            images = []
             if True:
                 # Fly the impression poses
-                for i in range(len(poses.poses)):
-                    move.go_to_position(poses.poses[i].position.x, poses.poses[i].position.y, poses.poses[i].position.z, speed=2)
-                    move.loiter(rate, duration=3)
+                for i in range(0, len(poses.poses), 2): # For loop that counts by two every loop.
+                    move.go_to_position(poses.poses[i].position.x, poses.poses[i].position.y, poses.poses[i].position.z, poses.poses[i].orientation.z, speed=4, rate=rate)
                     
+                    if poses.header.frame_id == "ci":
+                        move.loiter(rate) #loiter and dont take picture
+                        move.go_to_position(poses.poses[i+1].position.x, poses.poses[i+1].position.y, poses.poses[i+1].position.z, poses.poses[i+1].orientation.z, speed=4, rate=rate) #go to impression pose
+                        images.append(move.loiter_and_pic(rate)) #loiter and take picture
+
+                    elif poses.header.frame_id == "ic":
+                        move.loiter_and_pic(rate) #loiter and take picture
+                        move.go_to_position(poses.poses[i+1].position.x, poses.poses[i+1].position.y, poses.poses[i+1].position.z, poses.poses[i+1].orientation.z, speed=4, rate=rate) #go to impression pose
+                        images.append(move.loiter(rate)) #loiter and dont take picture
+            
+            # show images
+            for image in images:
+                cv2.imshow("facades", image)
+                cv2.waitKey(0)
+            
+            
             else:
                 # Just do something random
-                move.go_to_position(10, 10, 10, speed=3)
+                move.go_to_position(10, 10, 10, 0, speed=3, rate=rate)
                 image = move.loiter_and_pic(rate)
                 #cv2.imshow('Captured image 1', image)
                 #cv2.waitKey(0)
                 #move.loiter(rate, duration=300)
 
-                move.go_to_position(-10, -10, 10, speed=3)
+                move.go_to_position(-10, -10, 10, 0, speed=3, rate=rate)
                 image = move.loiter_and_pic(rate)
                 #cv2.imshow('Captured image 2', image) #Imshow only works with waitKey, but since the program doesnt' run without me pressing 0 manually, I rest assured that the image exist :)
                 #cv2.waitKey(0)
@@ -267,7 +287,6 @@ if __name__ == '__main__':
 
                 break
             
-
 
     except rospy.ROSInterruptException:
         exit(0)

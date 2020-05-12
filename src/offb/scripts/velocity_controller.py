@@ -2,12 +2,12 @@
 
 import rospy
 from mavros_msgs.msg import State
-from geometry_msgs.msg import PoseStamped, Pose, Point, Quaternion, Vector3, Twist, TwistStamped
+from geometry_msgs.msg import PoseStamped, Pose, Point, Vector3, Twist, TwistStamped
 import math
 import numpy as np
 from std_msgs.msg import Header
 from PID import PID
-
+from squaternion import Quaternion
 
 
 class VelocityGuidance:
@@ -23,8 +23,7 @@ class VelocityGuidance:
         self.state = np.array([0, 0, 0])
         self.target = np.array([]) # State and target cannot be initialized to the same thing, or else the reached() check returns true prematurely
 
-        self.Yaw = PID(Kp=1.75, Kd=6, maxOut=0.5)
-
+        self.Yaw = PID(Kp=0.005, Kd=0.02, maxOut=1.5) # TODO: Tune
 
         self.lastTime = rospy.get_time()
         self.altitude_controller = PID(Kp=2.5, Kd=7.5, maxOut=self.request_velocity)
@@ -99,13 +98,16 @@ class VelocityGuidance:
         return output
     
     def update_point(self, current_state, request_velocity):
-        self.state = np.array([current_state.pose.position.x, current_state.pose.position.y, current_state.pose.position.z])
+        self.state = np.array([current_state.pose.position.x, current_state.pose.position.y, current_state.pose.position.z, current_state.pose.orientation.z])
         self.x_controller.maxOut = request_velocity
         self.y_controller.maxOut = request_velocity
         self.altitude_controller.maxOut = request_velocity
 
         # Drawing a vector from our current position to a target position
-        output_vector = self.target - self.state
+        output_vector = np.empty(3)
+        output_vector[0] = self.target[0] - self.state[0]
+        output_vector[1] = self.target[1] - self.state[1]
+        output_vector[2] = self.target[2] - self.state[2]
 
         # Normalizing vector
         output_vector = output_vector / (output_vector[0]**2 + output_vector[1]**2 + output_vector[2]**2)**.5
@@ -136,14 +138,33 @@ class VelocityGuidance:
         #output.linear.z = altitude_factor
 
         # TODO: Yaw controller
-        output.angular.z = 0
+
+        # The current_state.orientation is a Pose message, and therefore actually a quaternion, which means...
+        # ... that we have to translate the quaternion into euler form so that we can compare the two correctly for the PID controller :) 
+        current_quat = Quaternion( current_state.pose.orientation.w, current_state.pose.orientation.x, current_state.pose.orientation.y, current_state.pose.orientation.z)
+        current_euler = current_quat.to_euler()
+
+        # Since the PID controller calculate the error itself and I dont wanna custimize it, I ghetto fix and create a fake error myself with the rules that apply for the yaw
+        error = (current_euler[2] + math.pi) -  self.target[3]
+        #error = (error + 180) % 360 - 180
+        if error > math.pi:
+            error -= math.pi*2
+        elif error < -math.pi:
+            error += math.pi*2
+
+    
+        yaw_input = self.Yaw.update(0, error, time)
+
+        #rospy.loginfo(self.target[3])
+        #rospy.loginfo(current_euler[2])
+
+        output.angular.z = yaw_input
 
         return output
 
 
     def set_target(self, target):
-        self.target = np.array([])
-        self.target = np.array([target.position.x, target.position.y, target.position.z])
+        self.target = np.array([target.position.x, target.position.y, target.position.z, target.orientation.z])
 
     def set_line(self, A, B):
         self.point_A = np.array([A.x, A.y, A.z])

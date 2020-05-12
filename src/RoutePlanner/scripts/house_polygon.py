@@ -42,7 +42,7 @@ class PolygonExtractor():
         self.building_height = 2 # TODO: Take input from pilot
         self.wall_lengths = []
         self.overpass_building = []
-        
+        self.house_midpoint = []       
 
 
     def coordinate_for_startpoint_and_bearing(self, coordinate, bearing, distance):
@@ -127,6 +127,7 @@ class PolygonExtractor():
         # Simplify local coordinates so that we don't get multiple vertices on essentialy a single edge
         shapely_polygon = LinearRing(local_coords)
         simplified_polygon = shapely_polygon.simplify(0.8)
+        self.house_midpoint = simplified_polygon.centroid
         px, py = simplified_polygon.coords.xy
         # Pack these simplified values into the local_coords
         local_coords = []
@@ -192,13 +193,13 @@ class PolygonExtractor():
 
         poses = PoseArray()
         #poses.header.stamp = 0 # TODO: Time
-        poses.header.frame_id = "impression_poses"
+        poses.header.frame_id = "ci" # It's "ci" for corner-> impression. If the order is the other way around, it should be "ic"
 
         mission = Mission(80, 75)
 
         poses_list = []
         for i in range(len(self.wall_lengths)):
-            pose = Pose()
+            
             
             # since we know about the parameters of the camera, and we don't care about how many pixels or how much GSD we want, we can just do a triangle calculation I guess...
             # Lets get the horizontal distance first
@@ -231,7 +232,7 @@ class PolygonExtractor():
             # since that vector now points to the midpoint between a and b, we create a vector from that point to b and call it bh.
             point_h = point_a + vector_ab
 
-            vector_bh = point_h + vector_ab
+            #vector_bh = point_h + vector_ab
 
             # We rotate this vector anti-clockwise (so by a positive rotation-angle theta)
             # The angle is 180-fov divided by two
@@ -262,23 +263,33 @@ class PolygonExtractor():
                 These are the current values.
 
             '''
-
-            # TODO: Insert the corner positions into every other pose :) 
+            theta = math.radians(-90)
+            heading = np.array([math.cos(theta)* vector_ab[0] - math.sin(theta)*vector_ab[1], math.sin(theta)*vector_ab[0] + math.cos(theta)*vector_ab[1]])
+            self.house_impression_direction.append(heading / (math.sqrt(heading[0]**2 + heading[1]**2))) # This line is just for visualization purposes
+            heading = math.atan2(heading[1], heading[0])
+            self.house_impression_positions.append(impression_position_xy)
+            pose = Pose()
             pose.position.x = impression_position_xy[0] + 35
             pose.position.y = impression_position_xy[1] + 20
             pose.position.z = int(self.building_height) / 2 #TODO The height must be something based on the angle of the camera
-
-            self.house_impression_positions.append(impression_position_xy)
-
-            theta = math.radians(-90)
-            heading = np.array([math.cos(theta)* vector_ab[0] - math.sin(theta)*vector_ab[1], math.sin(theta)*vector_ab[0] + math.cos(theta)*vector_ab[1]])
-            self.house_impression_direction.append(heading / (math.sqrt(heading[0]**2 + heading[1]**2)))
-            heading = math.atan(heading[1]/heading[0])
             pose.orientation.z = heading
-            
-            #string = "Point " + str(i) + " xy: (" + str(pose.position.x) + ", " + str(pose.position.y) + str(")")
-            #print(string)
+
+
+            corner_pose = Pose()
+            # And now we append the corner positions into the pose_list
+            corner_x, corner_y = self.house_corner_positions.coords.xy
+            corner_pose.position.x = corner_x[i] + 35
+            corner_pose.position.y = corner_y[i] + 20
+            corner_pose.position.z = int(self.building_height) / 2 #TODO The height must be something based on the angle of the camera
+            #print(self.house_midpoint.xy[0][0])
+            oblique_angle = np.array([self.house_midpoint.xy[0][0] - corner_pose.position.x, self.house_midpoint.xy[1][0] - corner_pose.position.y])
+            oblique_angle = math.atan2(oblique_angle[1], oblique_angle[0])
+            corner_pose.orientation.z = oblique_angle # TODO: find an oblique angle for these poses as well. Might as well be looking at the building
+
+            poses_list.append(corner_pose)
             poses_list.append(pose)
+            
+
 
         poses.poses = poses_list
 
@@ -314,9 +325,12 @@ class PolygonExtractor():
         xxx, yyy = self.house_corner_positions.coords.xy
         plt.scatter(xxx, yyy)
 
+        centroidx, centroidy = self.house_midpoint.xy
+        plt.scatter(centroidx, centroidy, color='v')
+
         plt.show()
 
-
+'''
 
 spawn = np.array([55.396142, 10.388953])
 origin = np.array([55.396142, 10.388953])
@@ -326,3 +340,5 @@ PE.get_closest_building()
 PE.generate_impression_poses()
 
 PE.draw()
+''' 
+

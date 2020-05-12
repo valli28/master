@@ -3,7 +3,7 @@
     <include file="$(find px4)/launch/mavros_posix_sitl.launch">
         <arg name="vehicle" value="iris" />
         <arg name="verbose" value="true" />
-        <arg name="world" value="$(find mavlink_sitl_gazebo)/worlds/raadhus.world"/>
+        <arg name="world" value="$(find mavlink_sitl_gazebo)/worlds/raadhus_empty.world"/>
         <arg name="x" value="-35"/>
         <arg name="y" value="-20"/>
         <arg name="z" value="0"/>
