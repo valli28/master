@@ -49,14 +49,14 @@ import rospy
 
 #from px4tools import ulogf
 from geometry_msgs.msg import Pose, Point, Twist, PoseArray
-from sensor_msgs.msg import CompressedImage
+from sensor_msgs.msg import CompressedImage, Image
 from pymavlink import mavutil
 from offboard import OffboardCommon
 from threading import Thread
 #from tf.transformations import quaternion_from_euler
 from six.moves import xrange
 import numpy as np
-import cv2 as cv2
+
 
 from velocity_controller import VelocityGuidance
 
@@ -86,7 +86,9 @@ class Movement(OffboardCommon):
 
         self.tell_planner_that_drone_is_ready_pub = rospy.Publisher('/gps_ready_from_offboard', Bool)
 
-        self.camera_sub = rospy.Subscriber('/cgo3_camera/image_raw/compressed', CompressedImage, self.camera_callback, queue_size=1)
+        self.camera_sub = rospy.Subscriber('/cgo3_camera/image_raw', Image, self.camera_callback, queue_size=1)
+
+        self.image_pub = rospy.Publisher('impression_image_from_offboard', Image)
         
 
         self.vel_controller = VelocityGuidance(request_velocity=1)
@@ -104,14 +106,8 @@ class Movement(OffboardCommon):
         if not self.ready:
             return None
 
-        np_arr = np.fromstring(ros_data.data, np.uint8)
-        image_np = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-
-        #cv2.imshow('cv_img', image_np)
-        #cv2.waitKey(2)
-
         # Save image in this class...
-        self.image = image_np
+        self.image = ros_data
 
     def send_thread(self):
         thread_rate = rospy.Rate(20)  # Hz
@@ -222,7 +218,7 @@ if __name__ == '__main__':
         move.tell_planner_that_drone_is_ready_pub.publish(True)
         move.ready = True
         # And now, in turn, we wait until the planner gives us something to work with.
-        poses = []
+        poses = PoseArray()
         poses = rospy.wait_for_message('/impression_poses_from_planner', PoseArray)
         
         move.set_arm(True, 5)
@@ -230,47 +226,35 @@ if __name__ == '__main__':
         rospy.loginfo("Run mission")
 
         mission_done = False
+        impressions_done = False
         rate = rospy.Rate(40)
         while not rospy.is_shutdown():
             move.take_off(takeoff_altitude = 2, rate=rate)
             move.loiter(rate, duration=2)
             images = []
-            if True:
-                # Fly the impression poses
-                for i in range(0, len(poses.poses), 2): # For loop that counts by two every loop.
-                    move.go_to_position(poses.poses[i].position.x, poses.poses[i].position.y, poses.poses[i].position.z, poses.poses[i].orientation.z, speed=4, rate=rate)
-                    
-                    if poses.header.frame_id == "ci":
-                        move.loiter(rate) #loiter and dont take picture
-                        move.go_to_position(poses.poses[i+1].position.x, poses.poses[i+1].position.y, poses.poses[i+1].position.z, poses.poses[i+1].orientation.z, speed=4, rate=rate) #go to impression pose
-                        images.append(move.loiter_and_pic(rate)) #loiter and take picture
+            # Fly the impression poses
+            for i in range(0, len(poses.poses), 2): # For loop that counts by two every loop.
+                move.go_to_position(poses.poses[i].position.x, poses.poses[i].position.y, poses.poses[i].position.z, poses.poses[i].orientation.z, speed=4, rate=rate)
+                image = []
+                if poses.header.frame_id == "ci":
+                    move.loiter(rate) #loiter and dont take picture
+                    move.go_to_position(poses.poses[i+1].position.x, poses.poses[i+1].position.y, poses.poses[i+1].position.z, poses.poses[i+1].orientation.z, speed=4, rate=rate) #go to impression pose
+                    image = move.loiter_and_pic(rate)
+                    images.append(image) #loiter and take picture
 
-                    elif poses.header.frame_id == "ic":
-                        move.loiter_and_pic(rate) #loiter and take picture
-                        move.go_to_position(poses.poses[i+1].position.x, poses.poses[i+1].position.y, poses.poses[i+1].position.z, poses.poses[i+1].orientation.z, speed=4, rate=rate) #go to impression pose
-                        images.append(move.loiter(rate)) #loiter and dont take picture
-            
-            # show images
-            for image in images:
-                cv2.imshow("facades", image)
-                cv2.waitKey(0)
-            
-            
-            else:
-                # Just do something random
-                move.go_to_position(10, 10, 10, 0, speed=3, rate=rate)
-                image = move.loiter_and_pic(rate)
-                #cv2.imshow('Captured image 1', image)
-                #cv2.waitKey(0)
-                #move.loiter(rate, duration=300)
+                elif poses.header.frame_id == "ic":
+                    move.loiter_and_pic(rate) #loiter and take picture
+                    move.go_to_position(poses.poses[i+1].position.x, poses.poses[i+1].position.y, poses.poses[i+1].position.z, poses.poses[i+1].orientation.z, speed=4, rate=rate) #go to impression pose
+                    image = move.loiter(rate)
+                    images.append(image) #loiter and dont take picture
 
-                move.go_to_position(-10, -10, 10, 0, speed=3, rate=rate)
-                image = move.loiter_and_pic(rate)
-                #cv2.imshow('Captured image 2', image) #Imshow only works with waitKey, but since the program doesnt' run without me pressing 0 manually, I rest assured that the image exist :)
-                #cv2.waitKey(0)
-
-                move.follow_line(Point(10, 10, 10), Point(10, 20, 10), speed=2)
-                move.loiter(rate, duration=10)
+                move.image_pub.publish(image)
+                        
+            facade_poses = []
+            impressions_done = True
+            for i in range(0, len(facade_poses)):
+                # Interpolate between facade poses
+                print("hey")
 
             mission_done = True
             try:

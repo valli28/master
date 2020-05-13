@@ -2,6 +2,7 @@
 from pysolar.solar import *
 import datetime
 import numpy as np
+import math
 import utm
 from mpl_toolkits.mplot3d import axes3d
 import matplotlib.pyplot as plt
@@ -14,15 +15,15 @@ from sun import Sun
 from boundary import Boundary
 
 from house_polygon import PolygonExtractor
+from mission import Mission
 
 from threading import Thread
 import rospy
 
-from offb.msg import Bool, BuildingPolygonResult
+from offb.msg import BuildingPolygonResult, CameraStuff, Bool
 from sensor_msgs.msg import NavSatFix, Image
 from geometry_msgs.msg import Pose, PoseArray
 
-import math
 
 # This class might actually be split up into two classe since it actually serves two different purposes that are being performed at different times.
 class Planner():
@@ -43,11 +44,35 @@ class Planner():
             rospy.loginfo("Never got position confirmation from Offboard")
 
         self.house_result_pub = rospy.Publisher('/house_results_from_overpass_local', BuildingPolygonResult, queue_size=5) # Information about the house
-
+        self.camera_stuff_pub = rospy.Publisher('/camera_and_distances', CameraStuff, queue_size=1)
         self.impression_keyframes_pub = rospy.Publisher('/impression_poses_from_planner', PoseArray, queue_size=5) # Poses to take one image of each facade of the house
-
         self.inspection_keyframes_pub = rospy.Publisher('/keyframes_poses_from_planner', PoseArray, queue_size=5)
-        #coordinates = np.array([55.3729781, 10.4008157])
+
+        #self.segmented_image_sub = rospy.Subscriber('segmented_image_from_cnn', cnnResult, self.segmented_image_callback, queue_size=5)
+
+        self.get_tiles_ready = False
+
+    def send_camera_and_mission_information_to_cnn(self, mission, distances):
+        ''' Format of message is
+        float64[] aov
+        float64 focal_length
+        float64 resolution
+        float64[] distances_from_walls
+        '''
+        c = CameraStuff()
+        c.aov = [mission.aov[0], mission.aov[1]]
+        c.focal_length = mission.f
+        c.resolution =  [mission.sensor_resolution[0], mission.sensor_resolution[1]]
+        c.distances_from_walls = distances
+
+        self.camera_stuff_pub.publish(c)
+
+    def segmented_image_callback(self, data):
+        rospy.loginfo("Did we receive a segmented image from cnn?")
+
+        if self.get_tiles_ready == False:
+            self.get_tiles_ready = True
+
 
     def impression(self, drone_lat, drone_lon):
 
@@ -153,21 +178,30 @@ if __name__ == '__main__':
         # But for this proof of concept, we just run it.
 
         #building_info, impression_poses = planner.generate_impression_poses(closest_house, closest_node, distances_between_nodes, building_height, local_coords)
-        building_info, impression_poses = polygon.generate_impression_poses()
+        m = Mission(80, 75)
+        building_info, impression_poses = polygon.generate_impression_poses(m)
         polygon.draw()
-        #Publish the poses to make the impressions.
-        planner.impression_keyframes_pub.publish(impression_poses)
-        planner.house_result_pub.publish(building_info)
 
-        # and now get all the impression images as they come and "map" them over to a tilemap with regions to avoid etc.
-        #impression_image_from_camera = rospy.wait_for_message('impression_image_from_camera', Image) # THIS IS SUPPOSED TO BE IN THE SEGMENTATION NODE
-        # publish this unsegmented impression image to the semantic segmentation node
-        segmented_image = rospy.wait_for_message('/segmented_impression_image', Image)
+        rate = rospy.Rate(2)
+        while not rospy.is_shutdown(): # put the publishes into a loop when we are done drawing to make sure that noone misses it
+            planner.impression_keyframes_pub.publish(impression_poses)
+            planner.house_result_pub.publish(building_info)
+            planner.send_camera_and_mission_information_to_cnn(m, polygon.wall_distances)
+
+            if planner.get_tiles_ready == True: # If the other nodes are ready to do business with the segmentation stuff, we break out of the loop
+                break
+
+            try:
+                rate.sleep()
+            except rospy.ROSException:
+                exit(0)
         
+        # TODO: Receive stuff from house_ros.py and mix it with ours and generate the route
+        # Do the same kind of approach with a counter each time we get into the callback and the while-loop
 
-        inspection_keyframes = planner.generate_keyframes_for_inspection(segmented_image)
 
-        planner.inspection_keyframes_pub.publish(inspection_keyframes)
+        #inspection_keyframes = planner.generate_keyframes_for_inspection(segmented_image)
+        #planner.inspection_keyframes_pub.publish(inspection_keyframes)
 
     except rospy.ROSInterruptException:
         exit(0)

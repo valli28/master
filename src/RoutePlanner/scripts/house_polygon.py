@@ -8,7 +8,7 @@ import math
 import overpy
 from haversine import haversine, Unit
 import utm
-from mission import Mission
+
 from offb.msg import Bool, BuildingPolygonResult
 from geometry_msgs.msg import Pose, PoseArray
 from shapely.geometry import Polygon, LinearRing
@@ -41,6 +41,7 @@ class PolygonExtractor():
         self.house_impression_direction = []
         self.building_height = 2 # TODO: Take input from pilot
         self.wall_lengths = []
+        self.wall_distances = []
         self.overpass_building = []
         self.house_midpoint = []       
 
@@ -134,7 +135,7 @@ class PolygonExtractor():
         for i in range(len(px)):
             local_coords.append(np.array([px[i], py[i]]))
 
-        # And recalculate the distance between the existing nodes
+        # And re-calculate the distance between the existing nodes
         self.wall_lengths = []
         for i in range(len(local_coords) - 1):
             dist = math.sqrt((local_coords[i][0] - local_coords[i+1][0])**2 + (local_coords[i][1] - local_coords[i+1][1])**2)
@@ -175,7 +176,7 @@ class PolygonExtractor():
         return closest_way, closest_node, building_height, local_coords
         
 
-    def generate_impression_poses(self):
+    def generate_impression_poses(self, mission):
         # and remember that the nodes in the house variable and the distances are ordered correctly corresponding to the order which they are connected.
         print("I'm in the generate impression poses function now")
 
@@ -195,7 +196,7 @@ class PolygonExtractor():
         #poses.header.stamp = 0 # TODO: Time
         poses.header.frame_id = "ci" # It's "ci" for corner-> impression. If the order is the other way around, it should be "ic"
 
-        mission = Mission(80, 75)
+        #mission = Mission(80, 75)
 
         poses_list = []
         for i in range(len(self.wall_lengths)):
@@ -212,7 +213,7 @@ class PolygonExtractor():
             else:
                 print("Building is too high. Backing off a bit.")
                 distance_from_wall = v
-
+            self.wall_distances.append(distance_from_wall)
             # Now we have everything we need to generate the point at which the drone has to be to look at the wall.
             # We take the coordinates of the endpoints of the walls
 
@@ -282,7 +283,7 @@ class PolygonExtractor():
             corner_pose.position.y = corner_y[i] + 20
             corner_pose.position.z = int(self.building_height) / 2 #TODO The height must be something based on the angle of the camera
             #print(self.house_midpoint.xy[0][0])
-            oblique_angle = np.array([self.house_midpoint.xy[0][0] - corner_pose.position.x, self.house_midpoint.xy[1][0] - corner_pose.position.y])
+            oblique_angle = np.array([self.house_midpoint.xy[0][0] + 35 - corner_pose.position.x, self.house_midpoint.xy[1][0] + 20 - corner_pose.position.y])
             oblique_angle = math.atan2(oblique_angle[1], oblique_angle[0])
             corner_pose.orientation.z = oblique_angle # TODO: find an oblique angle for these poses as well. Might as well be looking at the building
 
@@ -326,7 +327,7 @@ class PolygonExtractor():
         plt.scatter(xxx, yyy)
 
         centroidx, centroidy = self.house_midpoint.xy
-        plt.scatter(centroidx, centroidy, color='v')
+        plt.scatter(centroidx, centroidy, color='m')
 
         plt.show()
 

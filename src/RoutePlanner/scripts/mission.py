@@ -26,6 +26,7 @@ class Mission():
         self.GSD = 1.0 #cm per pixel. Less is better (higher ground-resolution)
         self.GSD *= 0.5 # Due to Nyquist's sampling theorem i guess..
 
+        '''
         ################################################################################
         # For the FLIR Duo Pro R (not the camera I used. It's discontinued and I couldn't find nor calculate the focal length anywhere...)
         # The FLIR Duo Pro R camera can be purchased in many different variations, both in terms of thermal resolution, FOV and refresh-rate.
@@ -42,23 +43,24 @@ class Mission():
         #sensor_size_diagonal = math.hypot(sensor_size[0], sensor_size[1])
         f = 25 # focal length in mm.
         ################################################################################
+        '''
 
         ################################################################################
         # For the CGO3 camera
         # Initialize constant parameters such as camera, drone stuff etc.
-        sensor_resolution = np.array([3840, 2160])# pixels
+        self.sensor_resolution = np.array([1920, 1080])# pixels
 
-        self.aov = np.array([114.592, 114.592*(sensor_resolution[1]/sensor_resolution[0])])  # degrees so they say that the AOV is 32 degrees
+        self.aov = np.array([114.592, 114.592*(self.sensor_resolution[1]/self.sensor_resolution[0])])  # deg
         #diag_fov = math.hypot(lens[0], lens[1]) #calculating the hypotenuse
 
         #pixel_pitch = 17.0 / 1000 # pixel pitch (distance between one pixel core to the next) is 17 micrometers
         sensor_size = np.array([25.4, 25.4])
 
         #sensor_size_diagonal = math.hypot(sensor_size[0], sensor_size[1])
-        f = 14 # focal length in mm.
+        self.f = 14 # focal length in mm.
         ################################################################################
     
-        self.h = np.round(min((f * sensor_resolution * self.GSD) * 1.0 / sensor_size) / 100.0, 2) # Divide by 100 to get meters from cm(GSD).
+        self.h = np.round(min((self.f * self.sensor_resolution * self.GSD) * 1.0 / sensor_size) / 100.0, 2) # Divide by 100 to get meters from cm(GSD).
         print("With a minimum GSD of " + str(self.GSD) + "cm the UAV can fly at a maximum distance of " + str(self.h) + "m from the walls")
 
         self.fov = 2.0 * (np.tan(self.aov*math.pi / 180.0 * 0.5) * self.h) # This is the "field" that the camera can see. In the object-plane, how much does the x and y axes see. 2 (TAN (ANGLE OF VIEW/2) X DISTANCE TO SUBJECT) 

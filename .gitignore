@@ -15,3 +15,4 @@ Firmware/
 .rosinstall.bak
 .vscode/
 *.h5
+src/vision_opencv/
