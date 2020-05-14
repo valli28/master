@@ -180,6 +180,9 @@ class VelocityGuidance:
             return True
         else:
             return False
+        # TODO: yaw reached
+        #and (self.target[3] - 0.05) < self.state[3] < (self.target[3] + 0.05)
+        
 
     def closest_point_on_vector(self, x1, y1, z1, x2, y2, z2, x3, y3, z3): # x3,y3,z3 is the point
         px = x2-x1

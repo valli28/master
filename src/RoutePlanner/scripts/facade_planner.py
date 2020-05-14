@@ -20,7 +20,7 @@ from mission import Mission
 from threading import Thread
 import rospy
 
-from offb.msg import BuildingPolygonResult, CameraStuff, Bool
+from offb.msg import BuildingPolygonResult, CameraStuff, Bool, ImageAndRois
 from sensor_msgs.msg import NavSatFix, Image
 from geometry_msgs.msg import Pose, PoseArray
 
@@ -50,7 +50,24 @@ class Planner():
 
         #self.segmented_image_sub = rospy.Subscriber('segmented_image_from_cnn', cnnResult, self.segmented_image_callback, queue_size=5)
 
+        self.image_and_rois_sub = rospy.Subscriber('/segmented_image_from_cnn', ImageAndRois, callback=self.image_and_rois_callback)
+
         self.get_tiles_ready = False
+
+        self.images_list = []
+        self.rois_list = []
+
+
+    def image_and_rois_callback(self, data):
+        image = data.img
+        rois = data.rois
+
+        self.images_list.append(image)
+        self.rois_list.append(rois)
+
+        if self.get_tiles_ready == False:
+            self.get_tiles_ready = True
+
 
     def send_camera_and_mission_information_to_cnn(self, mission, distances):
         ''' Format of message is
@@ -67,14 +84,8 @@ class Planner():
 
         self.camera_stuff_pub.publish(c)
 
-    def segmented_image_callback(self, data):
-        rospy.loginfo("Did we receive a segmented image from cnn?")
 
-        if self.get_tiles_ready == False:
-            self.get_tiles_ready = True
-
-
-    def impression(self, drone_lat, drone_lon):
+    def path_generation(self, facade_image, windows):
 
         lat = drone_lat #55.471689
         lon = drone_lon #10.325267
@@ -138,6 +149,11 @@ class Planner():
         slider_box = plt.axes([0.15, 0.05, 0.65, 0.03], facecolor='lightgoldenrodyellow')
         self.time_slider = Slider(slider_box, 'UNIX Time', valmin=self.s.date.timestamp() - 60.0*60.0*12.0, valmax=self.s.date.timestamp() + 12.0*60.0*60.0, valinit=self.s.date.timestamp())
 
+        list_of_poses = PoseArray()
+        #forloop 
+
+        return list_of_poses
+
     def update(self, val):
         self.s.date = datetime.datetime.fromtimestamp(self.time_slider.val, tz=pytz.timezone("Europe/Copenhagen"))
         self.s.cast_on(self.list_of_reflective_boundaries, self.ax)
@@ -183,13 +199,23 @@ if __name__ == '__main__':
         polygon.draw()
 
         rate = rospy.Rate(2)
-        while not rospy.is_shutdown(): # put the publishes into a loop when we are done drawing to make sure that noone misses it
-            planner.impression_keyframes_pub.publish(impression_poses)
-            planner.house_result_pub.publish(building_info)
-            planner.send_camera_and_mission_information_to_cnn(m, polygon.wall_distances)
 
-            if planner.get_tiles_ready == True: # If the other nodes are ready to do business with the segmentation stuff, we break out of the loop
-                break
+        image_counter = 0
+        while not rospy.is_shutdown(): # put the publishes into a loop when we are done drawing to make sure that noone misses it
+
+            if planner.get_tiles_ready != True: # 
+                planner.impression_keyframes_pub.publish(impression_poses)
+                planner.house_result_pub.publish(building_info)
+                planner.send_camera_and_mission_information_to_cnn(m, polygon.wall_distances)
+            else:
+                if image_counter < len(planner.images_list):
+                    
+                    # generate paths using the tile-approach
+                    poses = planner.path_generation(self, facade_image, windows)
+
+                    image_counter += 1
+
+
 
             try:
                 rate.sleep()

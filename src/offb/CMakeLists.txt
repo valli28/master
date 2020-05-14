@@ -57,6 +57,8 @@ add_message_files(
   Bool.msg
   BuildingPolygonResult.msg
   CameraStuff.msg
+  ImageAndRois.msg
+  Roi.msg
 )
 
 ## Generate services in the 'srv' folder

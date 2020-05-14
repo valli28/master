@@ -19,7 +19,7 @@ import argparse
 
 import rospy
 from sensor_msgs.msg import Image, CompressedImage
-from offb.msg import BuildingPolygonResult, CameraStuff
+from offb.msg import BuildingPolygonResult, CameraStuff, ImageAndRois
 # and messages
 
 import cv2 as cv2
@@ -45,17 +45,10 @@ class HouseRCNN():
         self.impression_sub = rospy.Subscriber('/impression_image_from_offboard', Image, callback=self.append_to_images, queue_size=2)
         #rospy.Subscriber('/camera_and_distances', CameraStuff, queue_size=1)
 
-        # Directory to save logs and trained model
-        MODEL_DIR = os.path.join(INCLUDE_DIR, "model/logs")
-        # Local path to trained weights file
-        HOUSE_MODEL_PATH = os.path.join(INCLUDE_DIR, "house_full_20k_5_5.h5")
-        config = InferenceConfig()
+        # Send the results form the segmentation as a custom message containing the image mat and windows as rois
+        self.image_pub = rospy.Publisher('/segmented_image_from_cnn', ImageAndRois)
 
-        # Create model object in inference mode.
-        self.model = modellib.MaskRCNN(mode="inference", model_dir=MODEL_DIR, config=config)
-
-        # Load trained weights
-        self.model.load_weights(HOUSE_MODEL_PATH, by_name=True)
+        self.init_model()
 
         # Class names
         self.class_names = ['BG', 'door', 'garage_door', 'window']
@@ -65,6 +58,7 @@ class HouseRCNN():
         
         # Empty list of images that gets appended to every time the drone takes an impression image
         self.images = []
+        self.image_shape = 0
 
         # CV2 bridge to convert images from ros-messages
         self.bridge = CvBridge()
@@ -75,16 +69,31 @@ class HouseRCNN():
         self.camera = CameraStuff()
         self.camera = rospy.wait_for_message('/camera_and_distances', CameraStuff)
         
+    def init_model(self):
+        # Directory to save logs and trained model
+        MODEL_DIR = os.path.join(INCLUDE_DIR, "model/logs")
+        # Local path to trained weights file
+        HOUSE_MODEL_PATH = os.path.join(INCLUDE_DIR, "house_full_20k_5_5.h5")
+        self.config = InferenceConfig()
+
+        # Create model object in inference mode.
+        
+        self.model = modellib.MaskRCNN(mode="inference", model_dir=MODEL_DIR, config=self.config)
+
+        # Load trained weights
+        self.model.load_weights(HOUSE_MODEL_PATH, by_name=True)
 
     def append_to_images(self, data):
         rospy.loginfo("Acquired image from Offboard")
         
         try:
-            cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
+            cv_image = self.bridge.imgmsg_to_cv2(data, "rgb8")
         except CvBridgeError as e:
             print(e)
+
+        np_image = np.asarray(cv_image)
         
-        self.images.append(cv_image)
+        self.images.append(np_image)
 
 
     def segment_image(self, image, counter):
@@ -96,30 +105,57 @@ class HouseRCNN():
         
         # Field of view should now be in meters that spans the entire image, so we find a ratio between that FOV and the length of that wall
         ratio = self.polygon.distances[counter] / fov[0]
-        slice_width_in_pixels = ratio * self.camera.resolution[1]
+        if ratio > 1.0:
+            ratio = 1.0
+        rospy.loginfo(self.polygon.distances[counter])
+        rospy.loginfo(fov[0])
+        rospy.loginfo(ratio)
+        slice_width_in_pixels = self.camera.resolution[0] * ratio
 
-        x = int((self.camera.resolution[1] * 0.5) - slice_width_in_pixels * 0.5) # TODO: THIS IS WRONG
-        xx = int((self.camera.resolution[1] * 0.5) + slice_width_in_pixels * 0.5)
+        x = int((self.camera.resolution[0] * 0.5) - slice_width_in_pixels * 0.5) # TODO: THIS IS WRONG
+        xx = int((self.camera.resolution[0] * 0.5) + slice_width_in_pixels * 0.5)
         
         y = 0
-        yy = int(self.camera.resolution[0])
+        yy = int(self.camera.resolution[1])
         
         rospy.loginfo(x)
         rospy.loginfo(xx)
         rospy.loginfo(y)
         rospy.loginfo(yy)
+        rospy.loginfo(np.shape(image))
+        
 
         cropped_image = image[y:yy, x:xx]
+        rospy.loginfo(np.shape(cropped_image))
 
+        if self.image_shape != np.shape(cropped_image) and self.image_shape != 0:
+            rospy.loginfo("Re-initializing cnn model due to change in image shape")
+            del self.model
+            del self.config
+            self.init_model()
+        
+        self.image_shape = np.shape(cropped_image)        
+        
         # Run detection
-        self.results.append(self.model.detect([image], verbose=1))
+        self.results.append(self.model.detect([cropped_image], verbose=1))
 
-    def show(self, image):
 
         # Visualize newest results
-        r = self.results[len(self.results) - 1][0]
-        visualize.display_instances(image, r['rois'], r['masks'], r['class_ids'], 
-                                    self.class_names, r['scores'])
+        r = self.results[counter][0]
+        #rospy.loginfo(r['masks'])
+        visualize.display_instances(cropped_image, r['rois'], r['masks'], r['class_ids'], self.class_names, r['scores'])
+        
+        return cropped_image, r['rois']
+
+    def send_image_and_windows(self, img, rois):
+        sent_image = Image()
+        sent_image = self.bridge.cv2_to_imgmsg(img, "rgb8")
+        
+        msg = ImageAndRois()
+        msg.img = sent_image
+        msg.rois = rois
+
+        self.image_pub.publish(msg)
 
 
 if __name__ == '__main__':
@@ -133,10 +169,10 @@ if __name__ == '__main__':
             
             if image_counter < len(house.images):
                 # Use the CNN to segment the image we just received
-                house.segment_image(house.images[image_counter], image_counter)
+                image, rois = house.segment_image(house.images[image_counter], image_counter)
 
-                # Visualize the results
-                house.show(house.images[image_counter])
+                # Send the windows and the image of the facade.
+                house.send_image_and_windows(image, rois)
 
                 # Increment the counter so that we won't get in here before we get a new image
                 image_counter += 1

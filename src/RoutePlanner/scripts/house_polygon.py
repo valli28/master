@@ -209,10 +209,10 @@ class PolygonExtractor():
             v = abs((self.building_height / 2.0) * math.tan((180 - mission.aov[1])))
             # And compare which one of them is largest and return it
             if h > v:
-                distance_from_wall = h
+                distance_from_wall = h + 1.5
             else:
                 print("Building is too high. Backing off a bit.")
-                distance_from_wall = v
+                distance_from_wall = v + 1.5
             self.wall_distances.append(distance_from_wall)
             # Now we have everything we need to generate the point at which the drone has to be to look at the wall.
             # We take the coordinates of the endpoints of the walls
@@ -255,7 +255,7 @@ class PolygonExtractor():
 
             # If we add vector_ac to point a, we now have point c, which is the impression position.
             #impression_position_xy = point_a + vector_ac
-            impression_position_xy = point_h + (vector_hc / np.linalg.norm(vector_hc)) * (distance_from_wall + 1.5) # Add 1.5m to the desired distance
+            impression_position_xy = point_h + (vector_hc / np.linalg.norm(vector_hc)) * (distance_from_wall) # Add 1.5m to the desired distance
             # Generate a position that is halfway between the two nodes, as well as a distance away form the facade (like a triangle)
             '''
             This is stupid... but I have to correct the launch offset in xy that I have set the drone to for all the positions that i post to the drone...
