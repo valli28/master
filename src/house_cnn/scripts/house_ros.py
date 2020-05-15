@@ -19,7 +19,7 @@ import argparse
 
 import rospy
 from sensor_msgs.msg import Image, CompressedImage
-from offb.msg import BuildingPolygonResult, CameraStuff, ImageAndRois
+from offb.msg import BuildingPolygonResult, CameraStuff, ImageAndRois, Roi
 # and messages
 
 import cv2 as cv2
@@ -150,10 +150,17 @@ class HouseRCNN():
     def send_image_and_windows(self, img, rois):
         sent_image = Image()
         sent_image = self.bridge.cv2_to_imgmsg(img, "rgb8")
+
+        rois_msg_array = []
+        for i in range(len(rois)):
+            rospy.loginfo(i)
+            rospy.loginfo(rois[i])
+            rois_msg_array.append(Roi(rois[i]))
+
         
         msg = ImageAndRois()
         msg.img = sent_image
-        msg.rois = rois
+        msg.rois = rois_msg_array
 
         self.image_pub.publish(msg)
 

@@ -57,6 +57,17 @@ class Planner():
         self.images_list = []
         self.rois_list = []
 
+        self.s = Sun(self.coordinates[0], self.coordinates[1])
+        self.m = Mission(80, 80)
+        self.model_walls = []
+        self.model_windows = []
+
+        self.fig_thread = Thread(target=self.draw_thread, args=())
+        self.fig_thread.daemon = True
+
+        self.fig = []
+        self.ax = []
+        
 
     def image_and_rois_callback(self, data):
         image = data.img
@@ -84,86 +95,57 @@ class Planner():
 
         self.camera_stuff_pub.publish(c)
 
-
-    def path_generation(self, facade_image, windows):
-
-        lat = drone_lat #55.471689
-        lon = drone_lon #10.325267
-
-        # Convert to UTM
-        utm_center = utm.from_latlon(lat, lon)
-
-        self.s = Sun(lat, lon)
-        self.m = Mission(0.8, 0.8)
-
-        local1 = [utm_center[0] - utm1[0], utm_center[1] - utm1[1]]
-        local2 = [utm_center[0] - utm2[0], utm_center[1] - utm2[1]]
-        local3 = [utm_center[0] - utm3[0], utm_center[1] - utm3[1]]
-        local4 = [utm_center[0] - utm4[0], utm_center[1] - utm4[1]]
-
-        height = 2.0
-        east_wall = Boundary(local1[0], local1[1], 0.0, local2[0], local2[1], 0.0, local1[0], local1[1], height, "wall", self.s.get_lightsource())
-        south_window = Boundary(0.3857, -2.1862, 0.5, 1.3943, -1.532, 0.8, 0.3857, -2.1862, 0.5+0.6, "window", self.s.get_lightsource())
-        north_wall = Boundary(local2[0], local2[1], 0.0, local3[0], local3[1], 0.0, local2[0], local2[1], height, "wall", self.s.get_lightsource())
-        fake_east_window = Boundary(2.292, 0.424, 0.8, 1.699, 1.342, 0.8, 2.292, 0.424, 0.8+0.5, "window", self.s.get_lightsource())
-        west_wall = Boundary(local3[0], local3[1], 0.0, local4[0], local4[1], 0.0, local3[0], local3[1], height, "wall", self.s.get_lightsource())
-        fake_west_window = Boundary(-2.4586, -1.0349, 0.8, -1.9872, -2.0232, 0.8, -2.4586, -1.0349, 0.8+0.5, "window", self.s.get_lightsource)
-        south_wall = Boundary(local4[0], local4[1], 0.0, local1[0], local1[1], 0.0, local4[0], local4[1], height, "wall", self.s.get_lightsource())
-
-        #ground_plane = Boundary(-5, -5, 0, 5, -5, 0, -5, 5, 0, "grass", s.get_lightsource())
-
-        self.list_of_reflective_boundaries = [fake_east_window, south_window, fake_west_window]
-        list_of_walls = [east_wall, north_wall, west_wall, south_wall]
+    def build_walls(self, polygon_result, local_coords):
+        rospy.loginfo("Planner recieved information about the house. Building walls for detailed model")
+        #model_walls = []
+        for i in range(len(local_coords) - 1):
+            # Use the local coordinates to build walls
+            self.model_walls.append(Boundary(local_coords[i][0], local_coords[i][1], 0.0, local_coords[i+1][0], local_coords[i+1][1], 0.0, local_coords[i][0], local_coords[i][1], polygon_result.building_height, "wall", self.s.get_lightsource()))
 
 
+        # Let's also initiate the figure and plot all the walls
         self.fig = plt.figure(num=1, clear=True)
         self.ax = self.fig.add_subplot(1, 1, 1, projection='3d')
 
-
-        east_wall.plot(self.ax)
-        south_window.plot(self.ax)
-        north_wall.plot(self.ax)
-        fake_east_window.plot(self.ax)
-        west_wall.plot(self.ax)
-        fake_west_window.plot(self.ax)
-        south_wall.plot(self.ax)
+        # For loop that goes through all the model walls and plots them
+        for wall in self.model_walls:
+            wall.plot(self.ax)
 
         #ground_plane.plot(ax)
-
-        self.s.cast_on(self.list_of_reflective_boundaries, self.ax)
-        self.m.draw_mission_planes(list_of_walls, self.ax)
-
-
         self.ax.set_xlabel('X: East')
-        self.ax.set_xlim(-10, 10)
+        self.ax.set_xlim(-50, 50)
         self.ax.set_ylabel('Y: North')
-        self.ax.set_ylim(-10, 10)
+        self.ax.set_ylim(-50, 50)
         self.ax.set_zlabel('Z: Up')
-        self.ax.set_zlim(-10, 10)
+        self.ax.set_zlim(-20, 20)
+
+        
+        self.m.draw_mission_planes(self.model_walls, self.ax)
 
 
-        axnext = plt.axes([0.85, 0.25, 0.10, 0.075])
-        self.bnext = Button(axnext, 'Path')
+    def put_up_windows(self, facade_image, windows, wall_length):
+        rospy.loginfo("Planner received information about the windows. Putting windows on walls")
+        # Generate an array that takes the time from now and the next 30 minutes, which we will say is the estimated mission duration
+        # We assume that the image itself is the plane, which is harsh to assume, but it's the best we've got... 
+        # Based on the size of the image (width, height), we make translation factors for x and y to be able to place the windows on the planes.
+        factor_y = facade_image.height / self.height # building height is assumed global
+        factor_x = facade_image.width / wall_length
 
+        rospy.loginfo(factor_x)
+        rospy.loginfo(factor_y)
+        # Let's then generate windows in the form that our mission class can understand, taking the bounding boxes of the instance segmentation, aka the rois and make windows out of them
+        for i in range(len(windows)):
+            # 
+            rospy.loginfo(i)
+        rospy.loginfo("many windows")
 
-        slider_box = plt.axes([0.15, 0.05, 0.65, 0.03], facecolor='lightgoldenrodyellow')
-        self.time_slider = Slider(slider_box, 'UNIX Time', valmin=self.s.date.timestamp() - 60.0*60.0*12.0, valmax=self.s.date.timestamp() + 12.0*60.0*60.0, valinit=self.s.date.timestamp())
+        time_range = range(self.s.date.timestamp(), self.s.date.timestamp() + int(0.5*60.0*60.0), 2) # generate a time-instance every other second, resulting in 1800 values?
+        for i in range(len(time_range)):
+            self.s.cast_on(self.model_windows, self.ax)
 
-        list_of_poses = PoseArray()
-        #forloop 
-
-        return list_of_poses
-
-    def update(self, val):
-        self.s.date = datetime.datetime.fromtimestamp(self.time_slider.val, tz=pytz.timezone("Europe/Copenhagen"))
-        self.s.cast_on(self.list_of_reflective_boundaries, self.ax)
-        self.fig.canvas.draw_idle()
-        self.m.check_for_reflection(self.s, self.ax)
-
-
-    def button_callback(self, event):
-        self.m.generate_mission(self.ax)
-
+        
+        return PoseArray()
+   
 
     def generate_keyframes_for_inspection(self, segmented_image):
         # Something someting
@@ -172,12 +154,12 @@ class Planner():
         return poses
 
 
-    def something(self):
-        print("hey")
-        self.time_slider.on_changed(self.update)
-
-        self.bnext.on_clicked(self.button_callback)
-
+    def draw_thread(self):
+        #self.s.date = datetime.datetime.fromtimestamp(self.time_slider.val, tz=pytz.timezone("Europe/Copenhagen"))
+        #self.s.cast_on(self.list_of_reflective_boundaries, self.ax)
+        self.fig.canvas.draw_idle()
+        self.m.check_for_reflection(self.s, self.ax)
+        
         plt.show()
 
 if __name__ == '__main__':
@@ -193,26 +175,33 @@ if __name__ == '__main__':
         # For the final product, a google maps widget with the coordinates that we just fetched would confirm with the pilot that we are indeed at the correct site and building.
         # But for this proof of concept, we just run it.
 
+        # Let's draw the building in 3D like planes
+        # First, build the plane-model walls
+        planner.build_walls(polygon, local_coords)
+        # Start the thread that updates the matplotlib figure with the mathematical model
+        planner.fig_thread.start()
+
         #building_info, impression_poses = planner.generate_impression_poses(closest_house, closest_node, distances_between_nodes, building_height, local_coords)
-        m = Mission(80, 75)
-        building_info, impression_poses = polygon.generate_impression_poses(m)
+        
+        building_info, impression_poses = polygon.generate_impression_poses(planner.m)
         polygon.draw()
 
         rate = rospy.Rate(2)
 
+        # init a counter that keeps track of which facade we are currently working on once we are done finding the overpass stuff
         image_counter = 0
         while not rospy.is_shutdown(): # put the publishes into a loop when we are done drawing to make sure that noone misses it
 
-            if planner.get_tiles_ready != True: # 
+            if planner.get_tiles_ready != True: # The first state of this loop is doing impressions
                 planner.impression_keyframes_pub.publish(impression_poses)
                 planner.house_result_pub.publish(building_info)
-                planner.send_camera_and_mission_information_to_cnn(m, polygon.wall_distances)
-            else:
+                planner.send_camera_and_mission_information_to_cnn(planner.m, polygon.wall_distances)
+            else: # And the second state is doing detailed positions for the "model" or whatever
                 if image_counter < len(planner.images_list):
                     
                     # generate paths using the tile-approach
-                    poses = planner.path_generation(self, facade_image, windows)
-
+                    poses = planner.put_up_windows(planner.images_list[image_counter], planner.rois_list[image_counter], polygon.wall_distances[image_counter])
+                    planner.inspection_keyframes_pub.publish(poses)
                     image_counter += 1
 
 

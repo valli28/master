@@ -1,2 +1,2 @@
-sensor_msgs/Image[] img
+sensor_msgs/Image img
 Roi[] rois

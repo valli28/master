@@ -23,7 +23,7 @@ class Boundary():
         # Vectors
         self.p01 = self.p1 - self.p0
         self.p02 = self.p2 - self.p0
-        self.cross = np.cross(self.p02, self.p01)
+        self.cross = np.cross(self.p01, self.p02)
         self.normal = self.cross / np.linalg.norm(self.cross)
 
 
@@ -31,7 +31,7 @@ class Boundary():
         #self.X, self.Y, self.Z = self.plane(np.linalg.norm(self.p01), np.linalg.norm(self.p02), 20, 20, self.normal, self.z[2])
 
 
-        Nx = Ny = Nz = 0.10 # how many meters one tile should repressent.
+        Nx = Ny = Nz = 0.50 # how many meters one tile should repressent.
         self.X, self.Y, self.Z = self.plane_matrices(Nx, Ny, Nz)
 
         '''
