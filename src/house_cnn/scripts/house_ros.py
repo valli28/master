@@ -153,8 +153,8 @@ class HouseRCNN():
 
         rois_msg_array = []
         for i in range(len(rois)):
-            rospy.loginfo(i)
-            rospy.loginfo(rois[i])
+            #rospy.loginfo(i)
+            #rospy.loginfo(rois[i])
             rois_msg_array.append(Roi(rois[i]))
 
         

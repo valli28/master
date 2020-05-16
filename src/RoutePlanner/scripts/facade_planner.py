@@ -24,6 +24,8 @@ from offb.msg import BuildingPolygonResult, CameraStuff, Bool, ImageAndRois
 from sensor_msgs.msg import NavSatFix, Image
 from geometry_msgs.msg import Pose, PoseArray
 
+import copy
+
 
 # This class might actually be split up into two classe since it actually serves two different purposes that are being performed at different times.
 class Planner():
@@ -77,6 +79,7 @@ class Planner():
         self.rois_list.append(rois)
 
         if self.get_tiles_ready == False:
+            
             self.get_tiles_ready = True
 
 
@@ -119,48 +122,73 @@ class Planner():
         self.ax.set_zlabel('Z: Up')
         self.ax.set_zlim(-20, 20)
 
-        
         self.m.draw_mission_planes(self.model_walls, self.ax)
 
 
-    def put_up_windows(self, facade_image, windows, wall_length):
+    def put_up_windows(self, facade_image, windows, wall_length, model_wall):
         rospy.loginfo("Planner received information about the windows. Putting windows on walls")
         # Generate an array that takes the time from now and the next 30 minutes, which we will say is the estimated mission duration
         # We assume that the image itself is the plane, which is harsh to assume, but it's the best we've got... 
         # Based on the size of the image (width, height), we make translation factors for x and y to be able to place the windows on the planes.
-        factor_y = facade_image.height / self.height # building height is assumed global
-        factor_x = facade_image.width / wall_length
 
-        rospy.loginfo(factor_x)
-        rospy.loginfo(factor_y)
         # Let's then generate windows in the form that our mission class can understand, taking the bounding boxes of the instance segmentation, aka the rois and make windows out of them
         for i in range(len(windows)):
-            # 
-            rospy.loginfo(i)
-        rospy.loginfo("many windows")
+            # Remember that the coordinates of the rois (windows) are upside down on the y-axis
+            # The rois are in the following form : y1,x1, y2,x2
+            
+            n_xy_tiles = len(model_wall.x)
+            n_z_tiles = len(model_wall.z) # this is the y coordinate of the image, but the z coordinate in the world-frame
+            
+            x1 = n_xy_tiles - round((windows[i].roi[1] / facade_image.width) * n_xy_tiles) - 1 
+            y1 = n_z_tiles - round((windows[i].roi[0] / facade_image.height) * n_z_tiles) - 1
+            x2 = n_xy_tiles - round((windows[i].roi[3] / facade_image.width) * n_xy_tiles) - 1
+            y2 = n_z_tiles - round((windows[i].roi[2] / facade_image.height) * n_z_tiles) - 1
 
-        time_range = range(self.s.date.timestamp(), self.s.date.timestamp() + int(0.5*60.0*60.0), 2) # generate a time-instance every other second, resulting in 1800 values?
-        for i in range(len(time_range)):
-            self.s.cast_on(self.model_windows, self.ax)
+            #rospy.loginfo([x1, y1, x2, y2])
+            # We are going to find indecies for the plane and just select the ones that the window covers
 
-        
+            #  TODO: COrrect this method. It's not quite right...
+
+            p1 = np.array([model_wall.x[x1], model_wall.y[x1], model_wall.z[y2]])
+            p2 = np.array([model_wall.x[x2], model_wall.y[x2], model_wall.z[y2]])
+            p3 = np.array([model_wall.x[x1], model_wall.y[x1], model_wall.z[y1]])
+
+            window = Boundary(p1[0], p1[1], p1[2], p2[0], p2[1], p2[2], p3[0], p3[2], p3[2], "window", self.s.get_lightsource())
+
+            window.plot(self.ax)
+
+            self.model_windows.append(window)
+
+        rospy.loginfo(self.s.date.timestamp())
+
+        time_range = range(int(self.s.date.timestamp()), int(self.s.date.timestamp() + 0.5*60.0*60.0), 2) # generate a time-instance every other second, resulting in 1800 values?
+        #for i in range(len(time_range)):
+        #    self.s.cast_on(self.model_windows, self.ax)
+
         return PoseArray()
    
 
     def generate_keyframes_for_inspection(self, segmented_image):
         # Something someting
         rospy.loginfo("I'm in the generate keyframes for inspection function now")
-        poses = PoseArray()
-        return poses
+        return_poses = PoseArray()
+        return return_poses
 
 
     def draw_thread(self):
         #self.s.date = datetime.datetime.fromtimestamp(self.time_slider.val, tz=pytz.timezone("Europe/Copenhagen"))
         #self.s.cast_on(self.list_of_reflective_boundaries, self.ax)
-        self.fig.canvas.draw_idle()
-        self.m.check_for_reflection(self.s, self.ax)
-        
+        thread_rate = rospy.Rate(2)  # Hz
         plt.show()
+
+        while not rospy.is_shutdown():
+            self.fig.canvas.draw_idle()
+            self.m.check_for_reflection(self.s, self.ax)
+            try:  # prevent garbage in console output when thread is killed
+                thread_rate.sleep()
+            except rospy.ROSInterruptException:
+                pass
+        
 
 if __name__ == '__main__':
     try:
@@ -200,7 +228,7 @@ if __name__ == '__main__':
                 if image_counter < len(planner.images_list):
                     
                     # generate paths using the tile-approach
-                    poses = planner.put_up_windows(planner.images_list[image_counter], planner.rois_list[image_counter], polygon.wall_distances[image_counter])
+                    poses = planner.put_up_windows(planner.images_list[image_counter], planner.rois_list[image_counter], polygon.wall_distances[image_counter], planner.model_walls[image_counter])
                     planner.inspection_keyframes_pub.publish(poses)
                     image_counter += 1
 

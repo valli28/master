@@ -73,7 +73,7 @@ class Mission():
 
     def check_for_reflection(self, sun, axes):
         # sun.roa is a n x 6 shape array where n is the number of vectors in the program
-        intersection_point = [0, 0 , 0]
+        intersection_point = [0, 0, 0]
         for j in range(len(self.mission_planes)):
             for i in range(len(sun.roa)):
                 #print(self.mission_planes[0].X[0][0])

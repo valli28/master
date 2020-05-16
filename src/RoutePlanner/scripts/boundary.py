@@ -51,7 +51,6 @@ class Boundary():
  
         ## Material parameters #########################################
         self.material = material
-        self.reflectiveness = 1.0 # Default reflectiveness is 100% (mirror)
 
         if material == "wall":
             self.color = 'r'
