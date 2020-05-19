@@ -128,6 +128,7 @@ class PolygonExtractor():
         # Simplify local coordinates so that we don't get multiple vertices on essentialy a single edge
         shapely_polygon = LinearRing(local_coords)
         simplified_polygon = shapely_polygon.simplify(0.8)
+        # TODO use the object.is_ccw or shapely.geometry.polygon.orient(polygon, sign=1.0) to make sure the points are cw and not ccw
         self.house_midpoint = simplified_polygon.centroid
         px, py = simplified_polygon.coords.xy
         # Pack these simplified values into the local_coords
