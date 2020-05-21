@@ -9,13 +9,10 @@ import overpy
 from haversine import haversine, Unit
 import utm
 
+
+from shapely.geometry import Polygon, LinearRing, Point
+
 import os
-
-from offb.msg import Bool, BuildingPolygonResult
-from geometry_msgs.msg import Pose, PoseArray
-from shapely.geometry import Polygon, LinearRing
-
-import json
 
 # mean earth radius - https://en.wikipedia.org/wiki/Earth_radius#Mean_radius
 _AVG_EARTH_RADIUS_KM = 6371.0088
@@ -112,9 +109,9 @@ class PolygonExtractor():
         print("  Building: %s" % closest_way.tags.get("building", "n/a"))
         print("  Approximate height %s" % closest_way.tags.get("building:height", "n/a"))
         print("  Nodes: " + str(len(closest_way.nodes)))
-        for node in closest_way.nodes:
-            print("    Lat: %f, Lon: %f" % (node.lat, node.lon))
-            print("    And my position is currently Lat: %f, Lon: %f" % (self.location[0], self.location[1]))
+        #for node in closest_way.nodes:
+        #    print("    Lat: %f, Lon: %f" % (node.lat, node.lon))
+        #    print("    And my position is currently Lat: %f, Lon: %f" % (self.location[0], self.location[1]))
 
         #print("Which in local coordinates, with origin as the origin, that corresponds to:")
         x, y, number, letter = utm.from_latlon(self.origin[0], self.origin[1])
@@ -153,11 +150,9 @@ class PolygonExtractor():
         
         return closest_way, closest_node, local_coords
 
-    def get_closest_building(self):
+    def get_closest_building(self, query_result):
 
-        result = self.submit_query_to_overpass()
-
-        closest_way, closest_node, local_coords = self.find_closest_way(result)
+        closest_way, closest_node, local_coords = self.find_closest_way(query_result)
         #distances_between_nodes = []
         building_height = []
         try:
@@ -180,37 +175,19 @@ class PolygonExtractor():
         return closest_way, closest_node, building_height, local_coords
         
 
-    def generate_impression_poses(self, mission):
+    def generate_impression_poses(self, aov):
         # and remember that the nodes in the house variable and the distances are ordered correctly corresponding to the order which they are connected.
         print("I'm in the generate impression poses function now")
 
-        building = BuildingPolygonResult()
-        ''' BuildingPolygonResult.msg
-        bool found_building
-        string building_name
-        string building_type
-        float64[] distances
-        '''
-        building.found_building = True
-        building.building_name = self.overpass_building.tags.get("name", "n/a")
-        building.building_type = self.overpass_building.tags.get("building", "n/a")
-        building.distances = self.wall_lengths
 
-        poses = PoseArray()
-        #poses.header.stamp = 0 # TODO: Time
-        poses.header.frame_id = "ci" # It's "ci" for corner-> impression. If the order is the other way around, it should be "ic"
-
-        #mission = Mission(80, 75)
-
-        poses_list = []
         for i in range(len(self.wall_lengths)):
             
             
             # since we know about the parameters of the camera, and we don't care about how many pixels or how much GSD we want, we can just do a triangle calculation I guess...
             # Lets get the horizontal distance first
-            h = abs((self.wall_lengths[i] / 2.0) * math.tan((180 - mission.aov[0])))
+            h = abs((self.wall_lengths[i] / 2.0) * math.tan((180 - aov[0])))
             # And then the vertical
-            v = abs((self.building_height / 2.0) * math.tan((180 - mission.aov[1])))
+            v = abs((self.building_height / 2.0) * math.tan((180 - aov[1])))
             # And compare which one of them is largest and return it
             if h > v:
                 distance_from_wall = h + 1.5
@@ -273,32 +250,106 @@ class PolygonExtractor():
             self.house_impression_direction.append(heading / (math.sqrt(heading[0]**2 + heading[1]**2))) # This line is just for visualization purposes
             heading = math.atan2(heading[1], heading[0])
             self.house_impression_positions.append(impression_position_xy)
-            pose = Pose()
-            pose.position.x = impression_position_xy[0] + 35
-            pose.position.y = impression_position_xy[1] + 20
-            pose.position.z = int(self.building_height) / 2 #TODO The height must be something based on the angle of the camera
-            pose.orientation.z = heading
 
+        return self.house_impression_positions
 
-            corner_pose = Pose()
-            # And now we append the corner positions into the pose_list
-            corner_x, corner_y = self.house_corner_positions.coords.xy
-            corner_pose.position.x = corner_x[i] + 35
-            corner_pose.position.y = corner_y[i] + 20
-            corner_pose.position.z = int(self.building_height) / 2 #TODO The height must be something based on the angle of the camera
-            #print(self.house_midpoint.xy[0][0])
-            oblique_angle = np.array([self.house_midpoint.xy[0][0] + 35 - corner_pose.position.x, self.house_midpoint.xy[1][0] + 20 - corner_pose.position.y])
-            oblique_angle = math.atan2(oblique_angle[1], oblique_angle[0])
-            corner_pose.orientation.z = oblique_angle # TODO: find an oblique angle for these poses as well. Might as well be looking at the building
+    def check_for_invalid_positions(self, query_result):
+        # we start by using the buildings that we found from the query that we didnt use and build polygons from them.
+        #self.house_impression_positions
+        #self.house_corner_positions
 
-            poses_list.append(corner_pose)
-            poses_list.append(pose)
+        #fig, ax = plt.figure(2)
+
+        # Convert query result buildings into Shapely polygons
+        surrounding_polygons = []
+        counter = 0
+        for way in query_result.ways:
+            
+            
+            x, y, number, letter = utm.from_latlon(self.origin[0], self.origin[1])
+            local_coords = []
+            for node in way.nodes:
+                pointlat = node.lat
+                pointlon = node.lon
+                pointx, pointy, number, letter = utm.from_latlon(float(pointlat), float(pointlon))
+                difx = x - pointx
+                dify = y - pointy
+                
+                #print("  x: %f, y: %f" % (difx, dify))
+                local_coords.append(np.array([-difx, -dify]))
+
             
 
+            # Simplify local coordinates so that we don't get multiple vertices on essentialy a single edge
+            shapely_polygon = Polygon(local_coords)
+            surrounding_polygons.append(shapely_polygon)
+            counter += 1
+        
+        for i in range(len(surrounding_polygons)):
+            xx, yy = surrounding_polygons[i].exterior.coords.xy
+            
+            plt.plot(xx, yy, marker='o', color='b')
+        
+        # Check if any of the impression positions and corner positions are invalid
+        impression_issue = False
+        for i in range(len(self.house_impression_positions)):
+            p1 = Point(self.house_impression_positions[i][0], self.house_impression_positions[i][1])
+            for i in range(len(surrounding_polygons)):
+                poly = surrounding_polygons[i]
+                
+                if p1.within(poly):
+                    way = query_result.ways[i]
+                    print("Name: %s" % way.tags.get("name", "n/a"))
+                    print("  Building: %s" % way.tags.get("building", "n/a"))
+                    print("  Approximate height %s" % way.tags.get("building:height", "n/a"))
+                    print("Impression pose number " + str(i) + " is invalid")
+                    impression_issue = True
 
-        poses.poses = poses_list
+        if impression_issue:
+            print("There is an issue with one or more of the impression coordinates of this building.")
+        else:
+            print("Impression pose list ready. No issues encountered.")
 
-        return building, poses
+        # And the impression poses in a slightly different color
+        xi = []
+        yi = []
+        u = []
+        v = []
+        for i in range(len(self.house_impression_positions)):
+            xi.append(self.house_impression_positions[i][0])
+            yi.append(self.house_impression_positions[i][1])
+            u.append(self.house_impression_direction[i][0])
+            v.append(self.house_impression_direction[i][1])
+            
+        #plt.scatter(xi, yi, marker='o', color='r')
+        plt.quiver(xi, yi, u, v, color='r', label="Impression Poses")
+
+
+        corner_issue = False
+        for i in range(len(self.house_corner_positions.coords)):
+            p1 = Point(self.house_corner_positions.coords[i][0], self.house_corner_positions.coords[i][1])
+            for i in range(len(surrounding_polygons)):
+                poly = surrounding_polygons[i]
+                
+                if p1.within(poly):
+                    way = query_result.ways[i]
+                    print("Name: %s" % way.tags.get("name", "n/a"))
+                    print("  Building: %s" % way.tags.get("building", "n/a"))
+                    print("  Approximate height %s" % way.tags.get("building:height", "n/a"))
+                    print("Corner pose number " + str(i) + " is invalid")
+                    corner_issue = True
+
+        if corner_issue:
+            print("There is an issue with one or more of the corner coordinates of this building.")
+        else:
+            print("Corner pose list ready. No issues encountered.")
+
+        xxx, yyy = self.house_corner_positions.coords.xy
+        plt.scatter(xxx, yyy, label="Intermediate positions")
+
+        #plt.show()
+            
+
 
     def draw(self):
         # unpack all the values in x and y arrays
@@ -310,7 +361,7 @@ class PolygonExtractor():
 
         fig, ax = plt.subplots(1, 1)
 
-        plt.plot(x, y, marker='o', color='b')
+        plt.plot(x, y, marker='o', color='b', label="Nodes")
         ax.axis('equal')
         
         # And the impression poses in a slightly different color
@@ -325,38 +376,38 @@ class PolygonExtractor():
             v.append(self.house_impression_direction[i][1])
             
         #plt.scatter(xi, yi, marker='o', color='r')
-        plt.quiver(xi, yi, u, v, color='r')
+        plt.quiver(xi, yi, u, v, color='r', label="Impression Poses")
 
         xxx, yyy = self.house_corner_positions.coords.xy
-        plt.scatter(xxx, yyy)
+        plt.scatter(xxx, yyy, label="Intermediate positions")
 
         centroidx, centroidy = self.house_midpoint.xy
-        plt.scatter(centroidx, centroidy, color='m')
+        plt.scatter(centroidx, centroidy, color='m', label="Centroid")
 
+        plt.xlabel("Local west[m]")
+        plt.ylabel("Local north[m]")
+
+        plt.legend(prop=dict(weight='bold', size='small'))
+
+        #plt.savefig(os.path.dirname(os.path.abspath(__file__)) + '/../figures/' + "overpass" + '.pdf', bbox_inches='tight', dpi=300, format='pdf')
         plt.show()
         
 
 
-        # plt.savefig(os.path.dirname(os.path.abspath(__file__)) + '/../figures/' + "overpass" + '.pdf', bbox_inches='tight', dpi=300, format='pdf')
-
-'''
+sensor_resolution = np.array([1920, 1080])# pixels
+aov = np.array([114.592, 114.592*(sensor_resolution[1]/sensor_resolution[0])])  # deg
 
 spawn = np.array([55.396142, 10.388953])
 origin = np.array([55.396142, 10.388953])
-PE = PolygonExtractor(spawn, origin, 20) # Coordinates a meter away from building
-PE.get_closest_building()
+PE = PolygonExtractor(spawn, origin, 70) # Coordinates a meter away from building
 
-PE.generate_impression_poses()
+result = PE.submit_query_to_overpass()
+
+PE.get_closest_building(result)
+
+PE.generate_impression_poses(aov)
+
+PE.check_for_invalid_positions(result)
 
 PE.draw()
-
-        a = [1,2,3]
-        with open('test.txt', 'w') as f:
-            f.write(json.dumps(a))
-
-        #Now read the file back into a Python list object
-        with open('test.txt', 'r') as f:
-            a = json.loads(f.read())
-
-'''
 
