@@ -374,6 +374,7 @@ class PolygonExtractor():
             yi.append(self.house_impression_positions[i][1])
             u.append(self.house_impression_direction[i][0])
             v.append(self.house_impression_direction[i][1])
+            ax.annotate(str(i), (self.house_impression_positions[i][0], self.house_impression_positions[i][1]))
             
         #plt.scatter(xi, yi, marker='o', color='r')
         plt.quiver(xi, yi, u, v, color='r', label="Impression Poses")
@@ -389,9 +390,23 @@ class PolygonExtractor():
 
         plt.legend(prop=dict(weight='bold', size='small'))
 
+        
+
         #plt.savefig(os.path.dirname(os.path.abspath(__file__)) + '/../figures/' + "overpass" + '.pdf', bbox_inches='tight', dpi=300, format='pdf')
         plt.show()
         
+with open("interpreter", 'r') as f:
+    data = f.read()
+
+ov = overpy.Overpass()
+result = ov.parse_xml(data)
+
+print("Ways: " + str(len(result.ways)))
+
+#for element in result:
+
+#print(data)
+#print("Name: %s" % way.tags.get("name", "n/a"))
 
 
 sensor_resolution = np.array([1920, 1080])# pixels
