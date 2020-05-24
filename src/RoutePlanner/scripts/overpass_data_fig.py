@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib import colors
 import math
 import overpy
 import utm
@@ -8,7 +9,6 @@ from shapely.geometry import Polygon, Point
 from shapely.strtree import STRtree
 
 from progress.bar import Bar
-
 
 def generate_impression_poses(polygon, height, aov, clockwise):
     xx, yy = polygon.exterior.coords.xy
@@ -63,17 +63,6 @@ def generate_impression_poses(polygon, height, aov, clockwise):
 
 
 
-def check(pois, polys):
-    # I get all the polys here every time, and that is a bit stupid as it is 72000 * 72000 checks
-    for point in pois:
-        for poly in polys:
-            #print(point.distance(poly.representative_point()))
-            #if point.hausdorff_distance(Point(poly.exterior.coords[0])) > 1500:
-            #    return 0
-            if point.within(poly):
-                return 1
-    return 0
-
 def check_tree(tr, points):
     for point in points:
         result = tree.query(point)
@@ -101,7 +90,7 @@ def rotation_dir(pr):
     else:
         return "UNKNOWN"
 
-with open("interpreter_centrum", 'r') as f:
+with open("interpreter_big", 'r') as f:
     data = f.read()
 
 ov = overpy.Overpass()
@@ -155,17 +144,22 @@ if draw:
 
 print("Putting polygons into tree")
 tree = STRtree(polygons)
-print("Done")
 
 bar2 = Bar("Counting impression positions lists for interferences", max = n_ways)
-counter = []
+valid_counter = []
+invalid_counter = []
 pos = []
 #counter2 = 0
 ymin, ymax, xmin, xmax = 1000000, -1000000, 1000000, -1000000
 
 for points in points_list:
-    invalid = check_tree(tree, points)
-    counter.append(invalid)
+    valid = check_tree(tree, points)
+    if valid == 1:
+        valid_counter.append(valid)
+        invalid_counter.append(0)
+    if valid == -1:
+        invalid_counter.append(valid)
+        valid_counter.append(0)
     pos.append(np.array([points[0].x, points[0].y]))
     
     for point in points:
@@ -181,68 +175,97 @@ for points in points_list:
     bar2.next()
 bar2.finish()
 
-res = 100 #meters
+res = 50 #meters
 _x = np.arange(xmin, xmax, res)
 _y = np.arange(ymin, ymax, res)
 _xx, _yy = np.meshgrid(_x, _y)
 x, y = _xx.ravel(), _yy.ravel()
 
+#print(invalid_counter)
 
-_z = np.zeros_like(_xx)
+_z_invalid = np.zeros_like(_xx)
 _z_valid = np.zeros_like(_xx)
 it = 0
+invert = _z_invalid.shape[0]
 for p in pos:
     try:
         x_index = np.where(np.logical_and(_x < p[0] + res/2, _x > p[0] - res/2))[0][0]
-        y_index = np.where(np.logical_and(_y < p[1] + res/2, _y > p[1] - res/2))[0][0]
+        y_index = invert - np.where(np.logical_and(_y < p[1] + res/2, _y > p[1] - res/2))[0][0]
+        _z_invalid[y_index][x_index] -= invalid_counter[it]
+        _z_valid[y_index][x_index] += valid_counter[it]
     except:
+        print("Invalid index. Not inserting into z matrix")
         x_index = None
         y_index = None
-    _z[y_index][x_index] += counter[it]
-    _z_valid[y_index][x_index] += not counter[it]
+
     it += 1
     #print(x_index, y_index)
 
-#_z -= 1
 
-total = _z + _z_valid
+diff = _z_invalid + _z_valid
+total = abs(_z_invalid) + abs(_z_valid)
 
-z_norm = np.divide(total, _z)
-#z_norm = np.where(z_norm == 0, z_norm, 1) where values are 0, make them 1 or something...
+'''
+z_invalid_norm = np.divide(total, _z_invalid)
+z_valid_norm = np.divide(total, _z_valid)
+
+#print(z_invalid_norm)
+z_invalid_norm = np.where(np.isnan(z_invalid_norm), 0, z_invalid_norm)
+z_invalid_norm = np.where(np.isinf(z_invalid_norm), 0, z_invalid_norm)
+
+z_valid_norm = np.where(np.isnan(z_valid_norm), 0, z_valid_norm)
+z_valid_norm = np.where(np.isinf(z_valid_norm), 0, z_valid_norm)
+'''
 
 
-z = _z.ravel()
-bottom = np.zeros_like(z)
+# Plot first
+fig, ax = plt.subplots(2, 1, figsize=(7,11))
+ax[0].axis('equal')
 
-fig, ax = plt.subplots()
-ax.set_title("Density of buildings with invalid impression poses")
-ax.set_xlabel("Easting from City Hall [m]")
-ax.set_ylabel("Northing from City Hall [m]")
-im_norm = ax.imshow(z_norm, cmap=plt.cm.RdYlGn)
-fig.colorbar(im_norm, ax=ax)
+ax[0].set_title("Density of buildings with invalid impression poses")
+ax[0].set_xlabel("Easting from City Hall [50m]")
+ax[0].set_ylabel("Northing from City Hall [50m]")
+im_invalid = ax[0].imshow(_z_invalid, cmap=plt.cm.hot)
+fig.colorbar(im_invalid, ax=ax)
 
-fig2, ax2 = plt.subplots()
-ax2.set_title("Number of buildings with invalid impression poses")
-ax2.set_xlabel("Easting from City Hall [m]")
-ax2.set_ylabel("Northing from City Hall [m]")
-im = ax2.imshow(_z, cmap=plt.cm.RdYlGn)
-fig2.colorbar(im, ax=ax2)
+# Plot second
 
-ax.axis('equal')
-ax2.axis('equal')
+ax[1].axis('equal')
 
-plt.savefig("invalidityDensityOdense.pdf")
-plt.savefig("invalidityDensityOdense.png")
+ax[1].set_title("Density of buildings with valid impression poses")
+ax[1].set_xlabel("Easting [50m]")
+ax[1].set_ylabel("Northing [50m]")
+im_valid = ax[1].imshow(_z_valid, cmap=plt.cm.hot)
+#fig[1].colorbar(im_valid, ax=ax2)
+
+images = [im_invalid, im_valid]
+# Find the min and max of all colors for use in setting the color scale.
+vmin = min(image.get_array().min() for image in images)
+vmax = max(image.get_array().max() for image in images)
+norm = colors.Normalize(vmin=vmin, vmax=vmax)
+for im in images:
+    im.set_norm(norm)
+
+
+plt.savefig("validityDensityOdense.pdf")
+plt.savefig("validityDensityOdense.png")
+
+# Plot the figures
 plt.show()
 
-# Save the data
+# Print some valuable stuff
+print("Total number of buildings: " + str(np.sum(total)))
+print("Number of houses that are valid: " + str(np.sum(valid_counter)))
+print("Number of houses that are invalid: " + str(abs(np.sum(invalid_counter))))
+print("Percentage of houses that this approach can cover: " + str(np.sum(valid_counter) / np.sum(total) * 100))
 
-np.save('outfile_z', _z)
+# TODO fix the scales together so they are eqally bright
+
+# Save the data
+np.save('outfile_invalid', _z_invalid)
+np.save('outfile_valid', _z_valid)
 np.save('outfile_pos', pos)
 
-
-#TODO: make valid buildings stand out as well, so that they stand out from "nothing"
-# So essentially count that down or? as -1?
 
 '''  
 with open('outfile_pos.npy', 'rb') as f:
@@ -259,3 +282,17 @@ Done
 Counting impression positions lists for interferences |################################| 72986/72986
 56647
 '''
+
+'''
+24 may
+Ways: 102827
+Converting ways into shapely |################################| 102827/102827
+Putting polygons into tree
+Counting impression positions lists for interferences |################################| 102827/102827
+Invalid index. Not inserting into z matrix
+Total number of buildings: 102826.0
+Number of houses that are valid: 23563
+Number of houses that are invalid: 79264
+Percentage of houses that this approach can cover: 22.91541049929006
+'''
+
