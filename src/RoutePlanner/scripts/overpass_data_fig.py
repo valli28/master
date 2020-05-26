@@ -175,7 +175,7 @@ for points in points_list:
     bar2.next()
 bar2.finish()
 
-res = 50 #meters
+res = 100 #meters
 _x = np.arange(xmin, xmax, res)
 _y = np.arange(ymin, ymax, res)
 _xx, _yy = np.meshgrid(_x, _y)
@@ -194,7 +194,7 @@ for p in pos:
         _z_invalid[y_index][x_index] -= invalid_counter[it]
         _z_valid[y_index][x_index] += valid_counter[it]
     except:
-        print("Invalid index. Not inserting into z matrix")
+        #print("Invalid index. Not inserting into z matrix")
         x_index = None
         y_index = None
 
@@ -202,12 +202,12 @@ for p in pos:
     #print(x_index, y_index)
 
 
-diff = _z_invalid + _z_valid
+#diff = _z_invalid + _z_valid
 total = abs(_z_invalid) + abs(_z_valid)
 
-'''
-z_invalid_norm = np.divide(total, _z_invalid)
-z_valid_norm = np.divide(total, _z_valid)
+
+z_invalid_norm = np.divide(_z_invalid, total)
+z_valid_norm = np.divide(_z_valid, total)
 
 #print(z_invalid_norm)
 z_invalid_norm = np.where(np.isnan(z_invalid_norm), 0, z_invalid_norm)
@@ -215,27 +215,27 @@ z_invalid_norm = np.where(np.isinf(z_invalid_norm), 0, z_invalid_norm)
 
 z_valid_norm = np.where(np.isnan(z_valid_norm), 0, z_valid_norm)
 z_valid_norm = np.where(np.isinf(z_valid_norm), 0, z_valid_norm)
-'''
+
 
 
 # Plot first
 fig, ax = plt.subplots(2, 1, figsize=(7,11))
 ax[0].axis('equal')
 
-ax[0].set_title("Density of buildings with invalid impression poses")
-ax[0].set_xlabel("Easting from City Hall [50m]")
-ax[0].set_ylabel("Northing from City Hall [50m]")
-im_invalid = ax[0].imshow(_z_invalid, cmap=plt.cm.hot)
+ax[0].set_title("Percentage of buildings with invalid impression poses")
+ax[0].set_xlabel("Easting from City Hall [500m]")
+ax[0].set_ylabel("Northing from City Hall [500m]")
+im_invalid = ax[0].imshow(z_invalid_norm*100, cmap=plt.cm.hot)
 fig.colorbar(im_invalid, ax=ax)
 
 # Plot second
 
 ax[1].axis('equal')
 
-ax[1].set_title("Density of buildings with valid impression poses")
-ax[1].set_xlabel("Easting [50m]")
-ax[1].set_ylabel("Northing [50m]")
-im_valid = ax[1].imshow(_z_valid, cmap=plt.cm.hot)
+ax[1].set_title("Percentage of buildings with valid impression poses")
+ax[1].set_xlabel("Easting [500m]")
+ax[1].set_ylabel("Northing [500m]")
+im_valid = ax[1].imshow(z_valid_norm*100, cmap=plt.cm.hot)
 #fig[1].colorbar(im_valid, ax=ax2)
 
 images = [im_invalid, im_valid]
@@ -282,6 +282,7 @@ Done
 Counting impression positions lists for interferences |################################| 72986/72986
 56647
 '''
+
 
 '''
 24 may
