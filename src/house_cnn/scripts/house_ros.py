@@ -26,6 +26,9 @@ import cv2 as cv2
 from cv_bridge import CvBridge, CvBridgeError
 import numpy as np
 import math
+import subprocess
+
+#from building_ros import HouseCSAIL
 
 
 class InferenceConfig(Config):
@@ -97,6 +100,9 @@ class HouseRCNN():
 
 
     def segment_image(self, image, counter):
+        # We perform cropping and segmenting to try and make a plane that is mostly just facade and then we can put the windows and doors on it.
+        
+        # Cropping #########################################################################################
         # Right before segmentation cut it so that only the facade we are looking at is in the frame.
         # We can calculate the current field of view with the distance that we currently are from the walls and the AOV.etc
         fov = []
@@ -117,16 +123,9 @@ class HouseRCNN():
         
         y = 0
         yy = int(self.camera.resolution[1])
-        
-        rospy.loginfo(x)
-        rospy.loginfo(xx)
-        rospy.loginfo(y)
-        rospy.loginfo(yy)
-        rospy.loginfo(np.shape(image))
-        
-
+                
         cropped_image = image[y:yy, x:xx]
-        rospy.loginfo(np.shape(cropped_image))
+        #rospy.loginfo(np.shape(cropped_image))
 
         if self.image_shape != np.shape(cropped_image) and self.image_shape != 0:
             rospy.loginfo("Re-initializing cnn model due to change in image shape")
@@ -134,18 +133,83 @@ class HouseRCNN():
             del self.config
             self.init_model()
         
-        self.image_shape = np.shape(cropped_image)        
-        
-        # Run detection
-        self.results.append(self.model.detect([cropped_image], verbose=1))
+        self.image_shape = np.shape(cropped_image)    
+           
 
+        # Semantic segmentation ##############################################################################
+        dir_path = os.path.dirname(os.path.realpath(__file__))
+        par_path = os.path.abspath(os.path.join(dir_path, os.pardir))
+        # We have to run the CSAIL segmentation in a seperate shell because it requires the conda environment to be turned on, which our ROS system does not like. 
+        # First we need to save an image to the folder where the script is
+        
+        W = int(self.camera.resolution[0]/4)
+        height, width, depth = image.shape
+        imgScale = W/width
+        newX,newY = image.shape[1]*imgScale, image.shape[0]*imgScale
+        scaled_image = cv2.resize(image,(int(newX),int(newY)))
+
+        im_path = par_path + '/semantic-segmentation-pytorch/facade.jpg'
+        print(im_path)
+        cv2.imwrite(im_path, cv2.cvtColor(scaled_image, cv2.COLOR_RGB2BGR))
+        # Call the .sh script 
+        subprocess.call(['./segment_image.sh'], cwd=dir_path, shell=True)
+
+        # Now we wait until we can read a file called "bit_output.png"
+        bitmap = []
+        while True:
+            try:
+                bitmap = cv2.imread(par_path + '/semantic-segmentation-pytorch/bit_output.png')
+                
+                break
+            except: 
+                rate.sleep()
+
+        bitmap = cv2.bitwise_not(bitmap)
+        kernel = np.ones((5,5),np.uint8)
+        #bitmap = cv2.erode(bitmap, kernel, iterations=5)
+        #bitmap = cv2.dilate(bitmap, kernel, iterations=5)
+        bitmap = cv2.morphologyEx(bitmap, cv2.MORPH_OPEN, kernel, iterations=7)
+
+        # Enlarge image back to original size
+        W = int(self.camera.resolution[0])
+        height, width, depth = bitmap.shape
+        imgScale = W/width
+        newX,newY = bitmap.shape[1]*imgScale, bitmap.shape[0]*imgScale
+        bitmap = cv2.resize(bitmap,(int(newX),int(newY)))
+        print(bitmap.shape)
+        cv2.imshow("Enlarged bitmap", bitmap)
+
+
+        # Find bounding box of bitmap
+        cols = np.any(bitmap, axis=0)
+        rows = np.any(bitmap, axis=1)
+        cmin, cmax = np.where(cols)[0][[0, -1]] # X-axis
+        rmin, rmax = np.where(rows)[0][[0, -1]] # Y-axis
+        
+
+        # Finding the minimum of both the crop-method and the segmentation method. This way, we get "best of both worlds"
+        bbox = np.array([max([cmin, x]), min([cmax, xx]), rmin, rmax])
+
+        print(bbox)
+        #cv2.imshow("bitmap test", bitmap)
+        #cv2.waitKey(0)
+
+        # Run detection on the bounding box
+        #image = image[bbox[2]:bbox[3], bbox[0]:bbox[1]]
+        self.results.append(self.model.detect([image], verbose=1))
+
+        # Paint "plane" on the image
+        cv2.rectangle(image,(bbox[0],bbox[2]),(bbox[1],bbox[3]),(255,0,0), 3)
 
         # Visualize newest results
         r = self.results[counter][0]
         #rospy.loginfo(r['masks'])
-        visualize.display_instances(cropped_image, r['rois'], r['masks'], r['class_ids'], self.class_names, r['scores'])
-        
-        return cropped_image, r['rois']
+        visualize.display_instances(image, r['rois'], r['masks'], r['class_ids'], self.class_names, r['scores'])
+
+        # The las tthing is removal of image from folder
+        os.remove(par_path + '/semantic-segmentation-pytorch/bit_output.png') # Remove the file so the next time we while->try, have to wait until the segmentation script is done.
+        cv2.destroyWindow('Enlarged bitmap') 
+        return image, r['rois']
 
     def send_image_and_windows(self, img, rois):
         sent_image = Image()
