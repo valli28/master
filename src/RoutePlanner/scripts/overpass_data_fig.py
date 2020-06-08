@@ -21,9 +21,9 @@ def generate_impression_poses(polygon, height, aov, clockwise):
     for i in range(len(wall_lengths)):
         # since we know about the parameters of the camera, and we don't care about how many pixels or how much GSD we want, we can just do a triangle calculation I guess...
         # Lets get the horizontal distance first
-        h = abs((wall_lengths[i] / 2.0) * math.tan((180 - aov[0])))
+        h = abs((wall_lengths[i] / 2.0) * math.tan((math.radians(90) - 0.5*aov[0])))
         # And then the vertical
-        v = abs((height / 2.0) * math.tan((180 - aov[1])))
+        v = abs((height / 2.0) * math.tan((math.radians(90) - 0.5*aov[1])))
         # And compare which one of them is largest and return it
         if h > v:
             distance_from_wall = h + 1.5
@@ -98,15 +98,15 @@ result = ov.parse_xml(data)
 
 n_ways = len(result.ways)
 print("Ways: " + str(n_ways))
-bar = Bar('Converting ways into shapely', max = n_ways)
+
 
 origin = np.array([55.396142, 10.388953])
 x, y, number, letter = utm.from_latlon(origin[0], origin[1])
 
-sensor_resolution = np.array([1920, 1080])# pixels
-aov = np.array([114.592, 114.592*(sensor_resolution[1]/sensor_resolution[0])])  # deg
 
-points_list = []
+
+bar = Bar('Generating local coordinates from lat, lon to UTM then to origin', max = n_ways)
+groups = []
 polygons = []
 for way in result.ways:
     local_coords = []
@@ -120,151 +120,169 @@ for way in result.ways:
         #print("  x: %f, y: %f" % (difx, dify))
         local_coords.append(np.array([-difx, -dify]))
 
-    # Simplify local coordinates so that we don't get multiple vertices on essentialy a single edge
+    
     poly = Polygon(local_coords)
     poly = poly.simplify(0.8)
-    points_list.append(generate_impression_poses(poly, 2, aov, rotation_dir(local_coords)))
+
     polygons.append(poly)
+    groups.append(local_coords)
 
     bar.next()
 bar.finish()
 
-draw = False
-if draw:
-    fig, ax = plt.subplots(1, 1)
-    ax.axis('equal')
+#sensor_resolution = np.array([1920, 1080])# pixels
+#aov = np.array([114.592, 114.592*(sensor_resolution[1]/sensor_resolution[0])])  # deg
+
+aspect_ratio = np.array([math.radians(4.0), math.radians(3.0)]) # As most drone cameras have this aspect ratio
+aovs = []
+for i in range(40):
+    aovs.append((5+i)*aspect_ratio)
+percentages = []
+
+#aovs = [np.array([math.radians(172.0), math.radians(129.0)])]
+
+
+for aov in aovs:
+    print(math.degrees(aov[0]))
+    bar1 = Bar("Generating impression poses for current AoV", max=n_ways)
+    points_list = []
+    for i in range(len(polygons)):
+        # Simplify local coordinates so that we don't get multiple vertices on essentialy a single edge
+        points_list.append(generate_impression_poses(polygons[i], 2, aov, rotation_dir(groups[i])))
+        bar1.next()
+    bar1.finish()
+
+    print("Putting polygons into tree")
+    tree = STRtree(polygons)
+
+    bar2 = Bar("Counting impression positions lists for interferences", max = n_ways)
+    valid_counter = []
+    invalid_counter = []
+    pos = []
+    #counter2 = 0
+    ymin, ymax, xmin, xmax = 1000000, -1000000, 1000000, -1000000
+
     for points in points_list:
+        valid = check_tree(tree, points)
+        if valid == 1:
+            valid_counter.append(valid)
+            invalid_counter.append(0)
+        if valid == -1:
+            invalid_counter.append(valid)
+            valid_counter.append(0)
+        pos.append(np.array([points[0].x, points[0].y]))
+        
         for point in points:
-            plt.scatter(point.x, point.y)
-    for poly in polygons:
-        xxx, yyy = poly.exterior.coords.xy
-        plt.plot(xxx, yyy)
-    plt.show()
+            if ymin > point.y:
+                ymin = point.y
+            if ymax < point.y:
+                ymax = point.y
+            if xmin > point.x:
+                xmin = point.x
+            if xmax < point.x:
+                xmax = point.x
+        #counter2 += check(points, polygons)
+        bar2.next()
+    bar2.finish()
 
+    draw = False
+    if draw:
+        fig, ax = plt.subplots(1, 1)
+        ax.axis('equal')
+        for points in points_list:
+            for point in points:
+                plt.scatter(point.x, point.y)
+        for poly in polygons:
+            xxx, yyy = poly.exterior.coords.xy
+            plt.plot(xxx, yyy)
+        plt.show()
 
-print("Putting polygons into tree")
-tree = STRtree(polygons)
+    figures = False
+    # Draw figures of Odense as a heatmap
+    if figures == True:
+        res = 100 #meters
+        _x = np.arange(xmin, xmax, res)
+        _y = np.arange(ymin, ymax, res)
+        _xx, _yy = np.meshgrid(_x, _y)
+        x, y = _xx.ravel(), _yy.ravel()
 
-bar2 = Bar("Counting impression positions lists for interferences", max = n_ways)
-valid_counter = []
-invalid_counter = []
-pos = []
-#counter2 = 0
-ymin, ymax, xmin, xmax = 1000000, -1000000, 1000000, -1000000
+        _z_invalid = np.zeros_like(_xx)
+        _z_valid = np.zeros_like(_xx)
+        it = 0
+        invert = _z_invalid.shape[0]
+        for p in pos:
+            try:
+                x_index = np.where(np.logical_and(_x < p[0] + res/2, _x > p[0] - res/2))[0][0]
+                y_index = invert - np.where(np.logical_and(_y < p[1] + res/2, _y > p[1] - res/2))[0][0]
+                _z_invalid[y_index][x_index] -= invalid_counter[it]
+                _z_valid[y_index][x_index] += valid_counter[it]
+            except:
+                #print("Invalid index. Not inserting into z matrix")
+                x_index = None
+                y_index = None
 
-for points in points_list:
-    valid = check_tree(tree, points)
-    if valid == 1:
-        valid_counter.append(valid)
-        invalid_counter.append(0)
-    if valid == -1:
-        invalid_counter.append(valid)
-        valid_counter.append(0)
-    pos.append(np.array([points[0].x, points[0].y]))
+            it += 1
+        # Calculate the total, which might have deviated from the total amount of buildings downloaded due to errors in the data
+        total = abs(_z_invalid) + abs(_z_valid)
+        z_invalid_norm = np.divide(_z_invalid, total)
+        z_valid_norm = np.divide(_z_valid, total)
+
+        #print(z_invalid_norm)
+        z_invalid_norm = np.where(np.isnan(z_invalid_norm), 0, z_invalid_norm)
+        z_invalid_norm = np.where(np.isinf(z_invalid_norm), 0, z_invalid_norm)
+
+        z_valid_norm = np.where(np.isnan(z_valid_norm), 0, z_valid_norm)
+        z_valid_norm = np.where(np.isinf(z_valid_norm), 0, z_valid_norm)
+
+        # Plot first
+        fig, ax = plt.subplots(2, 1, figsize=(7,11))
+        ax[0].axis('equal')
+
+        ax[0].set_title("Percentage of buildings with invalid impression poses")
+        ax[0].set_xlabel("Easting from City Hall [500m]")
+        ax[0].set_ylabel("Northing from City Hall [500m]")
+        im_invalid = ax[0].imshow(z_invalid_norm*100, cmap=plt.cm.hot)
+        fig.colorbar(im_invalid, ax=ax)
+
+        # Plot second
+        ax[1].axis('equal')
+        ax[1].set_title("Percentage of buildings with valid impression poses")
+        ax[1].set_xlabel("Easting [500m]")
+        ax[1].set_ylabel("Northing [500m]")
+        im_valid = ax[1].imshow(z_valid_norm*100, cmap=plt.cm.hot)
+
+        images = [im_invalid, im_valid]
+        # Find the min and max of all colors for use in setting the color scale.
+        vmin = min(image.get_array().min() for image in images)
+        vmax = max(image.get_array().max() for image in images)
+        norm = colors.Normalize(vmin=vmin, vmax=vmax)
+        for im in images:
+            im.set_norm(norm)
+
+        # Save the figures
+        plt.savefig("validityDensityOdense.pdf")
+        plt.savefig("validityDensityOdense.png")
+
+        # Plot the figures
+        plt.show()
+
+        # Save the data
+        np.save('outfile_invalid', _z_invalid)
+        np.save('outfile_valid', _z_valid)
+        np.save('outfile_pos', pos)
+
+    # Print some valuable stuff
+    building_sum = np.sum(valid_counter) + abs(np.sum(invalid_counter))
+    print("Total number of buildings: " + str(building_sum))
+    print("Number of houses that are valid: " + str(np.sum(valid_counter)))
+    print("Number of houses that are invalid: " + str(abs(np.sum(invalid_counter))))
+    perc_string = str(np.sum(valid_counter) / np.sum(building_sum) * 100)
+    print("Percentage of houses that this approach can cover: " + perc_string)
+    percentages.append(perc_string)
     
-    for point in points:
-        if ymin > point.y:
-            ymin = point.y
-        if ymax < point.y:
-            ymax = point.y
-        if xmin > point.x:
-            xmin = point.x
-        if xmax < point.x:
-            xmax = point.x
-    #counter2 += check(points, polygons)
-    bar2.next()
-bar2.finish()
 
-res = 100 #meters
-_x = np.arange(xmin, xmax, res)
-_y = np.arange(ymin, ymax, res)
-_xx, _yy = np.meshgrid(_x, _y)
-x, y = _xx.ravel(), _yy.ravel()
+print(percentages)
 
-#print(invalid_counter)
-
-_z_invalid = np.zeros_like(_xx)
-_z_valid = np.zeros_like(_xx)
-it = 0
-invert = _z_invalid.shape[0]
-for p in pos:
-    try:
-        x_index = np.where(np.logical_and(_x < p[0] + res/2, _x > p[0] - res/2))[0][0]
-        y_index = invert - np.where(np.logical_and(_y < p[1] + res/2, _y > p[1] - res/2))[0][0]
-        _z_invalid[y_index][x_index] -= invalid_counter[it]
-        _z_valid[y_index][x_index] += valid_counter[it]
-    except:
-        #print("Invalid index. Not inserting into z matrix")
-        x_index = None
-        y_index = None
-
-    it += 1
-    #print(x_index, y_index)
-
-
-#diff = _z_invalid + _z_valid
-total = abs(_z_invalid) + abs(_z_valid)
-
-
-z_invalid_norm = np.divide(_z_invalid, total)
-z_valid_norm = np.divide(_z_valid, total)
-
-#print(z_invalid_norm)
-z_invalid_norm = np.where(np.isnan(z_invalid_norm), 0, z_invalid_norm)
-z_invalid_norm = np.where(np.isinf(z_invalid_norm), 0, z_invalid_norm)
-
-z_valid_norm = np.where(np.isnan(z_valid_norm), 0, z_valid_norm)
-z_valid_norm = np.where(np.isinf(z_valid_norm), 0, z_valid_norm)
-
-
-
-# Plot first
-fig, ax = plt.subplots(2, 1, figsize=(7,11))
-ax[0].axis('equal')
-
-ax[0].set_title("Percentage of buildings with invalid impression poses")
-ax[0].set_xlabel("Easting from City Hall [500m]")
-ax[0].set_ylabel("Northing from City Hall [500m]")
-im_invalid = ax[0].imshow(z_invalid_norm*100, cmap=plt.cm.hot)
-fig.colorbar(im_invalid, ax=ax)
-
-# Plot second
-
-ax[1].axis('equal')
-
-ax[1].set_title("Percentage of buildings with valid impression poses")
-ax[1].set_xlabel("Easting [500m]")
-ax[1].set_ylabel("Northing [500m]")
-im_valid = ax[1].imshow(z_valid_norm*100, cmap=plt.cm.hot)
-#fig[1].colorbar(im_valid, ax=ax2)
-
-images = [im_invalid, im_valid]
-# Find the min and max of all colors for use in setting the color scale.
-vmin = min(image.get_array().min() for image in images)
-vmax = max(image.get_array().max() for image in images)
-norm = colors.Normalize(vmin=vmin, vmax=vmax)
-for im in images:
-    im.set_norm(norm)
-
-
-plt.savefig("validityDensityOdense.pdf")
-plt.savefig("validityDensityOdense.png")
-
-# Plot the figures
-plt.show()
-
-# Print some valuable stuff
-print("Total number of buildings: " + str(np.sum(total)))
-print("Number of houses that are valid: " + str(np.sum(valid_counter)))
-print("Number of houses that are invalid: " + str(abs(np.sum(invalid_counter))))
-print("Percentage of houses that this approach can cover: " + str(np.sum(valid_counter) / np.sum(total) * 100))
-
-# TODO fix the scales together so they are eqally bright
-
-# Save the data
-np.save('outfile_invalid', _z_invalid)
-np.save('outfile_valid', _z_valid)
-np.save('outfile_pos', pos)
 
 
 '''  

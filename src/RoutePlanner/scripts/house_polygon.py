@@ -145,7 +145,8 @@ class PolygonExtractor():
         for i in range(len(local_coords) - 1):
             dist = math.sqrt((local_coords[i][0] - local_coords[i+1][0])**2 + (local_coords[i][1] - local_coords[i+1][1])**2)
             self.wall_lengths.append(dist)
-
+        print("Wall lengths:")
+        print(self.wall_lengths)
         # We use Shapely's parallel_offset function to create a list of positions that are offset from the walls by some constant
         # These positions will make sure that the drone wont crash into the corners of the buildings
         self.house_corner_positions = simplified_polygon.parallel_offset(5.0, 'left', join_style=2) # TODO: some distance that is actually intelligent
@@ -209,9 +210,9 @@ class PolygonExtractor():
             
             # since we know about the parameters of the camera, and we don't care about how many pixels or how much GSD we want, we can just do a triangle calculation I guess...
             # Lets get the horizontal distance first
-            h = abs((self.wall_lengths[i] / 2.0) * math.tan((180 - mission.aov[0])))
+            h = abs((self.wall_lengths[i] / 2.0) * math.tan((math.radians(90 - 0.5*mission.aov[0]))))
             # And then the vertical
-            v = abs((self.building_height / 2.0) * math.tan((180 - mission.aov[1])))
+            v = abs((self.building_height / 2.0) * math.tan((math.radians(90 - 0.5*mission.aov[1]))))
             # And compare which one of them is largest and return it
             if h > v:
                 distance_from_wall = h + 1.5
