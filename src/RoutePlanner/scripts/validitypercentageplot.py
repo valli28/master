@@ -30,26 +30,42 @@ if True:
     aovs = [20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64, 68, 72, 76, 80, 84, 88, 92, 96, 100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140, 144, 148, 152, 156, 160, 164, 168, 172, 176]
     perc = [15.670981357036576, 15.114707226701157, 15.05441177900746, 15.0417691851362, 14.800587394361402, 14.580800762445662, 14.40574946268976, 14.519532807531096, 14.708199208379122, 14.999951374638956, 15.255720773726743, 15.553307983311775, 15.97537611716767, 16.44315209040427, 16.941075787487723, 17.531387670553453, 18.0954418586558, 18.679918698396335, 19.328581014714032, 19.964600737160474, 20.643410777325023, 21.328055860814764, 21.844457195094673, 22.443521643148202, 22.962840499090706, 23.381018604063136, 23.774884028513913, 24.094838904178864, 24.365195911579644, 24.52954963190602, 24.672508193373336, 24.760033843251286, 24.72405107607924, 24.53149464634775, 24.26794518949303, 23.939237748840288, 23.53759226662258, 22.99396073015842, 22.5038170908419, 22.14885195522577]
 
+    plt.figure(1, figsize=(10,7))
     plt.plot(aovs, perc, '-o', color='black')
-    plt.axis([16, 180, 0, 30])
+    plt.axis([16, 180, 10, 30])
     plt.title("Validity with increasing AoV's")
     plt.xlabel('Camera horizontal angle of view [°]')
     plt.ylabel('Percentage of buildings with valid impression poses [%]')
     #plt.clf()
 
+    print(min(perc))
+    print(max(perc))
     cgo3 = 115
     flirduopror = 56
-    zenmuseXT2 = 57.12
+    hasselblad = 96
+    zenmuseXT2 = 90
+    zenmusex4s = 84
+    zenmuseZ30 = 63.7
 
-    plt.text(cgo3+1.6,22.1, 'CGO3+', bbox=dict(facecolor='b', alpha=0.2), verticalalignment='top')
+    plt.text(cgo3+2.5,22.3, 'CGO3+', bbox=dict(facecolor='b', alpha=0.2), verticalalignment='top')
     plt.scatter(cgo3, 22.8, s=100, zorder=10, color='b')
 
-    plt.text(flirduopror,17.6,'Flir Duo Pro R', bbox=dict(facecolor='r', alpha=0.2), verticalalignment='top', horizontalalignment='right')
+    plt.text(flirduopror-3,16,'Flir Duo Pro R', bbox=dict(facecolor='r', alpha=0.2), verticalalignment='top', horizontalalignment='right')
     plt.scatter(flirduopror, 15, s=100, zorder=10, color='r')
 
-    plt.text(zenmuseXT2+4,14,'DJI Zenmuse XT2', bbox=dict(facecolor='g', alpha=0.2), verticalalignment='top', horizontalalignment='left')
-    plt.scatter(zenmuseXT2+3, 15.3, s=100, zorder=10, color='g')
+    plt.text(zenmuseXT2+4, 18.8,'DJI Zenmuse XT2', bbox=dict(facecolor='g', alpha=0.2), verticalalignment='top', horizontalalignment='left')
+    plt.scatter(zenmuseXT2+3,  19.42, s=100, zorder=10, color='g')
 
+    plt.text(hasselblad+3, 19.9, 'Hasselblad A6D', bbox=dict(facecolor='c', alpha=0.2), verticalalignment='top', horizontalalignment='left')
+    plt.scatter(hasselblad, 19.91, s=100, zorder=10, color='c')
+
+    plt.text(zenmusex4s+3, 17.6, 'DJI Zenmuse X4S', bbox=dict(facecolor='m', alpha=0.2), verticalalignment='top', horizontalalignment='left')
+    plt.scatter(zenmusex4s, 18.05, s=100, zorder=10, color='m')
+
+    plt.text(zenmuseZ30+3, 15.4, 'DJI Zenmuse Z30', bbox=dict(facecolor='tab:blue', alpha=0.2), verticalalignment='top', horizontalalignment='left')
+    plt.scatter(zenmuseZ30, 15.54, s=100, zorder=10, color='tab:blue')
+
+    plt.savefig("aovsandcameras.pdf")
     plt.show()
 
 '''

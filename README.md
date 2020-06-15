@@ -1,4 +1,6 @@
 # Master Thesis. Valthor B Gudmundsson
+Youtube video demonstration can be found here:
+https://www.youtube.com/watch?v=a4z7rwYiEE4
 
 ## Requirements
 

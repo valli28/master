@@ -47,55 +47,57 @@ class Sun():
 
     def cast_on(self, surfaces, axes):
         # We know the position of the sun in degrees from north (0 to 360) and degrees of altitude (from -90 to 90 I think)
-
         # The cast_on method gets called every time we update the time we wish to plot things for, so we update the azimuth and altitude.
         self.altitude = get_altitude(self.lat, self.lon, self.date, elevation=13.0)
         self.azimuth = get_azimuth(self.lat, self.lon, self.date, elevation=13.0)
 
         # TODO: if there is a surface halfway through the window, get the vertices that are inside the window, not just the edges
-
+        #print(surfaces)
         # Create soa in format: [X, Y, Z, U, V, W] where xyz is origin point of vector and uvw is vector
         xyz_end = []
-        end_index_x = len(surfaces[0].x) - 1
-        end_index_y = len(surfaces[0].y) - 1
-        end_index_z = len(surfaces[0].z) - 1
+
         
         soa = [] # Sun-vectors
         self.roa = [] # Reflection vectors
-        for i in range(len(surfaces)): 
-            # First we define the end-points of the vectors"
-            xyz_end.append([surfaces[i].x[0], surfaces[i].y[0], surfaces[i].z[0]])
-            xyz_end.append([surfaces[i].x[end_index_x], surfaces[i].y[end_index_y], surfaces[i].z[0]])
-            xyz_end.append([surfaces[i].x[0], surfaces[i].y[0], surfaces[i].z[end_index_z]])
-            xyz_end.append([surfaces[i].x[end_index_x], surfaces[i].y[end_index_y], surfaces[i].z[end_index_z]])
+        if surfaces != []:
+            for i in range(len(surfaces)): 
+                if len(surfaces[i].x) != 0:
+                    end_index_x = len(surfaces[i].x) - 1
+                    end_index_y = len(surfaces[i].y) - 1
+                    end_index_z = len(surfaces[i].z) - 1
+                    # First we define the end-points of the vectors"
+                    xyz_end.append([surfaces[i].x[0], surfaces[i].y[0], surfaces[i].z[0]])
+                    xyz_end.append([surfaces[i].x[end_index_x], surfaces[i].y[end_index_y], surfaces[i].z[0]])
+                    xyz_end.append([surfaces[i].x[0], surfaces[i].y[0], surfaces[i].z[end_index_z]])
+                    xyz_end.append([surfaces[i].x[end_index_x], surfaces[i].y[end_index_y], surfaces[i].z[end_index_z]])
 
-            # Project the sunrays backwards from the endpoints towards the direction of the sun
-            
-            r, theta, phi = 1, (90 - self.azimuth) * math.pi/180.0, (90 - self.altitude) * math.pi/180.0
-            
-            # We can increase the performance of this function by NOT calculating everything 4 times when I actually only have to do it once. 
-            for j in range(i*4, len(xyz_end)):
-                x, y, z = xyz_end[j][0] + r*math.sin(phi)*math.cos(theta), xyz_end[j][1] + r*math.sin(theta)*math.sin(phi), xyz_end[j][2] + r*math.cos(phi)
-                u, v, w = xyz_end[j][0] - x, xyz_end[j][1] - y, xyz_end[j][2] - z
+                    # Project the sunrays backwards from the endpoints towards the direction of the sun
+                    
+                    r, theta, phi = 1, (90 - self.azimuth) * math.pi/180.0, (90 - self.altitude) * math.pi/180.0
+                    
+                    # We can increase the performance of this function by NOT calculating everything 4 times when I actually only have to do it once. 
+                    for j in range(i*4, len(xyz_end)):
+                        x, y, z = xyz_end[j][0] + r*math.sin(phi)*math.cos(theta), xyz_end[j][1] + r*math.sin(theta)*math.sin(phi), xyz_end[j][2] + r*math.cos(phi)
+                        u, v, w = xyz_end[j][0] - x, xyz_end[j][1] - y, xyz_end[j][2] - z
 
-                [u, v, w] = [u, v, w] / np.linalg.norm([u, v, w])
+                        [u, v, w] = [u, v, w] / np.linalg.norm([u, v, w])
 
-                # We check the entrance angle to the plane.
-                incidence_angle = np.arccos(np.clip(np.dot([u, v, w], surfaces[i].normal), -1.0, 1.0))
-                specular_vector = 2*np.dot(surfaces[i].normal, [u, v, w])* surfaces[i].normal - [u, v, w]
-                                
+                        # We check the entrance angle to the plane.
+                        incidence_angle = np.arccos(np.clip(np.dot([u, v, w], surfaces[i].normal), -1.0, 1.0))
+                        specular_vector = 2*np.dot(surfaces[i].normal, [u, v, w])* surfaces[i].normal - [u, v, w]
+                                        
 
-                # We check whether the sunray goes through a wall first by cheating a little bit. 
-                # The way we do it is by finding whether the normal of the plane is pointing in the opposite direction of the sun.
-                # We use the dot-product to see how the vectors are pointing with respect to eachother. If the dot-product is negative, they are pointing in opposite directions.
-                dot_product = np.dot(surfaces[i].normal, [u, v, w])
-                ground_product = np.dot([0, 0, 1], [u, v, w])
-                if (dot_product > 0 and ground_product < 0):
-                    soa.append([x, y, z, u, v, w])
-                    self.roa.append([xyz_end[j][0], xyz_end[j][1], xyz_end[j][2], -specular_vector[0], -specular_vector[1], -specular_vector[2]])
-                else: 
-                    soa.append([0, 0, 0, 0, 0, 0])
-                    self.roa.append([0, 0, 0, 0, 0, 0])
+                        # We check whether the sunray goes through a wall first by cheating a little bit. 
+                        # The way we do it is by finding whether the normal of the plane is pointing in the opposite direction of the sun.
+                        # We use the dot-product to see how the vectors are pointing with respect to eachother. If the dot-product is negative, they are pointing in opposite directions.
+                        dot_product = np.dot(surfaces[i].normal, [u, v, w])
+                        ground_product = np.dot([0, 0, 1], [u, v, w])
+                        if (dot_product > 0 and ground_product < 0):
+                            soa.append([x, y, z, u, v, w])
+                            self.roa.append([xyz_end[j][0], xyz_end[j][1], xyz_end[j][2], -specular_vector[0], -specular_vector[1], -specular_vector[2]])
+                        else: 
+                            soa.append([0, 0, 0, 0, 0, 0])
+                            self.roa.append([0, 0, 0, 0, 0, 0])
 
                 
         Xr, Yr, Zr, Ur, Vr, Wr = zip(*self.roa)

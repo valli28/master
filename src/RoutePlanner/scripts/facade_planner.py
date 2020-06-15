@@ -122,7 +122,14 @@ class Planner():
         self.ax.set_zlabel('Z: Up')
         self.ax.set_zlim(-20, 20)
 
+        axsolarbutton = plt.axes([0.85, 0.25, 0.10, 0.075])
+        self.solar_button = Button(axsolarbutton, 'Solar Check')
+
+
         self.m.draw_mission_planes(self.model_walls, self.ax)
+
+        axbrushfirebutton = plt.axes([0.85, 0.10, 0.10, 0.075])
+        self.brushfirebutton = Button(axbrushfirebutton, 'Generate mission')
 
 
     def put_up_windows(self, facade_image, windows, wall_length, model_wall):
@@ -161,10 +168,6 @@ class Planner():
 
         rospy.loginfo(self.s.date.timestamp())
 
-        time_range = range(int(self.s.date.timestamp()), int(self.s.date.timestamp() + 0.5*60.0*60.0), 2) # generate a time-instance every other second, resulting in 1800 values?
-        #for i in range(len(time_range)):
-        #    self.s.cast_on(self.model_windows, self.ax)
-
         return PoseArray()
    
 
@@ -174,16 +177,29 @@ class Planner():
         return_poses = PoseArray()
         return return_poses
 
+    def solar_button_callback(self, event):
+        rospy.loginfo("Analyzing mission planes for solar reflections for the next 30 minutes")
+        time_range = range(int(self.s.date.timestamp()), int(self.s.date.timestamp() + 30.0*60.0), 120) # generate a time-instance every 30th second? 30 minutes
+
+        for i in range(len(time_range)):
+            self.s.date = datetime.datetime.fromtimestamp(time_range[i], tz=pytz.timezone("Europe/Copenhagen"))
+            self.s.cast_on(self.model_windows, self.ax)
+            self.fig.canvas.draw_idle()
+            self.m.check_for_reflection(self.s, self.ax)
+        rospy.loginfo("Done analyzing mission planes for solar reflections for the next 30 minutes")
+
+    def brushfirebutton_callback(self, event):
+        self.m.generate_mission(self.ax)
 
     def draw_thread(self):
-        #self.s.date = datetime.datetime.fromtimestamp(self.time_slider.val, tz=pytz.timezone("Europe/Copenhagen"))
-        #self.s.cast_on(self.list_of_reflective_boundaries, self.ax)
-        thread_rate = rospy.Rate(2)  # Hz
+        thread_rate = rospy.Rate(20)  # Hz
         plt.show()
 
         while not rospy.is_shutdown():
-            self.fig.canvas.draw_idle()
-            self.m.check_for_reflection(self.s, self.ax)
+            #self.fig.canvas.draw_idle()
+            
+            
+
             try:  # prevent garbage in console output when thread is killed
                 thread_rate.sleep()
             except rospy.ROSInterruptException:
@@ -219,6 +235,8 @@ if __name__ == '__main__':
         # init a counter that keeps track of which facade we are currently working on once we are done finding the overpass stuff
         image_counter = 0
         while not rospy.is_shutdown(): # put the publishes into a loop when we are done drawing to make sure that noone misses it
+            planner.solar_button.on_clicked(planner.solar_button_callback)
+            planner.brushfirebutton.on_clicked(planner.brushfirebutton_callback)
 
             if planner.get_tiles_ready != True: # The first state of this loop is doing impressions
                 planner.impression_keyframes_pub.publish(impression_poses)

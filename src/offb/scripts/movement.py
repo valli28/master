@@ -239,14 +239,14 @@ if __name__ == '__main__':
                 if poses.header.frame_id == "ci":
                     move.loiter(rate) #loiter and dont take picture
                     move.go_to_position(poses.poses[i+1].position.x, poses.poses[i+1].position.y, poses.poses[i+1].position.z, poses.poses[i+1].orientation.z, speed=4, rate=rate) #go to impression pose
-                    image = move.loiter_and_pic(rate)
-                    images.append(image) #loiter and take picture
+                    image = move.loiter_and_pic(rate)#loiter and take picture
+                    images.append(image) 
 
                 elif poses.header.frame_id == "ic":
                     move.loiter_and_pic(rate) #loiter and take picture
                     move.go_to_position(poses.poses[i+1].position.x, poses.poses[i+1].position.y, poses.poses[i+1].position.z, poses.poses[i+1].orientation.z, speed=4, rate=rate) #go to impression pose
-                    image = move.loiter(rate)
-                    images.append(image) #loiter and dont take picture
+                    image = move.loiter(rate) #loiter and dont take picture
+                    images.append(image) 
 
                 move.image_pub.publish(image)
                         

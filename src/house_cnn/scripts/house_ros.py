@@ -100,6 +100,7 @@ class HouseRCNN():
 
 
     def segment_image(self, image, counter):
+        
         # We perform cropping and segmenting to try and make a plane that is mostly just facade and then we can put the windows and doors on it.
         
         # Cropping #########################################################################################
@@ -149,8 +150,10 @@ class HouseRCNN():
         scaled_image = cv2.resize(image,(int(newX),int(newY)))
 
         im_path = par_path + '/semantic-segmentation-pytorch/facade.jpg'
+        im_path2 = par_path + '/semantic-segmentation-pytorch/facade2.jpg'
         print(im_path)
         cv2.imwrite(im_path, cv2.cvtColor(scaled_image, cv2.COLOR_RGB2BGR))
+        cv2.imwrite(im_path2, cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
         # Call the .sh script 
         subprocess.call(['./segment_image.sh'], cwd=dir_path, shell=True)
 
@@ -176,39 +179,45 @@ class HouseRCNN():
         imgScale = W/width
         newX,newY = bitmap.shape[1]*imgScale, bitmap.shape[0]*imgScale
         bitmap = cv2.resize(bitmap,(int(newX),int(newY)))
-        print(bitmap.shape)
-        cv2.imshow("Enlarged bitmap", bitmap)
+        #print(bitmap.shape)
+        #cv2.imshow("Enlarged bitmap", bitmap)
 
+        # crop bitmap to same size as the FoV bounding box
+        bitmap = bitmap[y:yy, x:xx]
 
         # Find bounding box of bitmap
         cols = np.any(bitmap, axis=0)
         rows = np.any(bitmap, axis=1)
         cmin, cmax = np.where(cols)[0][[0, -1]] # X-axis
         rmin, rmax = np.where(rows)[0][[0, -1]] # Y-axis
-        
+
+        cmin += x
+        cmax += x
+        rmin += y
+        rmax += y
 
         # Finding the minimum of both the crop-method and the segmentation method. This way, we get "best of both worlds"
-        bbox = np.array([max([cmin, x]), min([cmax, xx]), rmin, rmax])
+        bbox = np.array([cmin, cmax, rmin, rmax])
 
-        print(bbox)
+        #print(bbox)
         #cv2.imshow("bitmap test", bitmap)
         #cv2.waitKey(0)
 
         # Run detection on the bounding box
-        #image = image[bbox[2]:bbox[3], bbox[0]:bbox[1]]
+        image = image[bbox[2]:bbox[3], bbox[0]:bbox[1]]
         self.results.append(self.model.detect([image], verbose=1))
 
         # Paint "plane" on the image
-        cv2.rectangle(image,(bbox[0],bbox[2]),(bbox[1],bbox[3]),(255,0,0), 3)
+        #cv2.rectangle(image,(bbox[0],bbox[2]),(bbox[1],bbox[3]),(255,0,0), 3)
 
         # Visualize newest results
         r = self.results[counter][0]
         #rospy.loginfo(r['masks'])
         visualize.display_instances(image, r['rois'], r['masks'], r['class_ids'], self.class_names, r['scores'])
 
-        # The las tthing is removal of image from folder
+        # The last thing is removal of image from folder
         os.remove(par_path + '/semantic-segmentation-pytorch/bit_output.png') # Remove the file so the next time we while->try, have to wait until the segmentation script is done.
-        cv2.destroyWindow('Enlarged bitmap') 
+        #cv2.destroyWindow('Enlarged bitmap') 
         return image, r['rois']
 
     def send_image_and_windows(self, img, rois):
