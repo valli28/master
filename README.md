@@ -1,6 +1,18 @@
-# Master Thesis. Valthor B Gudmundsson
+# Master Thesis Project. Valthor B Gudmundsson
+Welcome to my Master Thesis project.
+The aim of my project was to create a solution for scalable path-planning for different kinds of building inspections using UAVs. 
+The drone begins by requesting building data from nearby buildings from the OpenStreetMap database and generates a list of poses for each facade of the nearest(or desired) building. At each pose a picture is taken. These pictures are segmented by two different networks (Mask-RCNN and one made in pytorch) to create awareness about the building. This awareness is used to calculate a rough "solar load" for each facade and from these loads, a thermal inspection can be planned more intelligently. 
+
+The system is implemented in ROS and simulated in Gazebo. The flight stack is PX4. The current configuration uses the CGO3+ RGB camera for the images that are later segmented. The quadcopter that is used is the default SITL drone; Iris. 
+
 Youtube video demonstration can be found here:
 https://www.youtube.com/watch?v=a4z7rwYiEE4
+
+The thesis itself is published from the digital library of the University of Southern Denmark here:
+https://thesis.sdu.dk/download?id=2854
+
+If the SDU library link above cannot be accessed for some reason, here is an unofficial link hosted by myself. 
+https://drive.google.com/file/d/1otMn-7kwLprjyHhJNpf6izKYiycDQAht/view?usp=sharing
 
 ## Requirements
 
@@ -45,7 +57,7 @@ This node/network also requires CUDA as it makes use of GPU acceleration. If you
 a full ROS install with gazebo. [This script][rospx4gazebo] installs all the the things you need and the guide is found [here][ros_install]
 
 pysolar
-
+etc....
 
 
 [tens_link]: https://www.tensorflow.org/install/gpu
